@@ -62018,9 +62018,9 @@ const animState = {
 
 async function loadAnimatedHero() {
   try {
-    // 1) three blob url
-    const threeSrc = document.getElementById('three-src').textContent;
-    const threeUrl = URL.createObjectURL(new Blob([threeSrc], { type: 'text/javascript' }));
+    // 1) reuse the SAME three module instance as the game (avoid dual THREE)
+    const threeUrl = window.__THREE_BLOB_URL__;
+    if (!threeUrl) throw new Error('missing shared three blob url');
 
     // 2) BufferGeometryUtils
     let bufSrc = document.getElementById('buf-utils-src').textContent;
@@ -62046,13 +62046,59 @@ async function loadAnimatedHero() {
     });
 
     const hero = gltf.scene;
-    // normalize height
-    const box = new THREE.Box3().setFromObject(hero);
-    const h = Math.max(0.001, box.max.y - box.min.y);
-    const s = 3.1 / h;
+
+    // Robust height: Box3 can collapse on skinned meshes — fall back to geometry
+    function measureHeight(obj) {
+      const box = new THREE.Box3().setFromObject(obj);
+      let h = box.max.y - box.min.y;
+      let minY = box.min.y;
+      if (!isFinite(h) || h < 0.05) {
+        // scan geometry in local space (bind pose approx)
+        let minY2 = Infinity, maxY2 = -Infinity;
+        obj.updateMatrixWorld(true);
+        obj.traverse((o) => {
+          if (!o.isMesh && !o.isSkinnedMesh) return;
+          const g = o.geometry;
+          if (!g) return;
+          if (!g.boundingBox) g.computeBoundingBox();
+          const bb = g.boundingBox;
+          if (!bb) return;
+          // apply world scale roughly via object's matrix
+          const sc = o.getWorldScale(new THREE.Vector3());
+          const wpos = o.getWorldPosition(new THREE.Vector3());
+          const a = wpos.y + bb.min.y * sc.y;
+          const b = wpos.y + bb.max.y * sc.y;
+          if (a < minY2) minY2 = a;
+          if (b > maxY2) maxY2 = b;
+        });
+        if (isFinite(minY2) && isFinite(maxY2) && maxY2 - minY2 > 0.05) {
+          h = maxY2 - minY2;
+          minY = minY2;
+        }
+      }
+      return { h, minY, box };
+    }
+
+    hero.scale.setScalar(1);
+    hero.position.set(0, 0, 0);
+    hero.updateMatrixWorld(true);
+    const m1 = measureHeight(hero);
+    // keep character about 3.1 units tall; hard clamp avoids giant bugs
+    let s = 3.1 / Math.max(m1.h, 0.15);
+    if (!isFinite(s) || s <= 0) s = 3.1;
+    s = clamp(s, 0.2, 12);
     hero.scale.setScalar(s);
-    const box2 = new THREE.Box3().setFromObject(hero);
-    hero.position.y = -box2.min.y;
+    hero.updateMatrixWorld(true);
+    const m2 = measureHeight(hero);
+    // second pass if still wrong size
+    if (isFinite(m2.h) && m2.h > 0.4 && Math.abs(m2.h - 3.1) > 0.6) {
+      const s2 = clamp(3.1 / m2.h, 0.2, 12);
+      hero.scale.setScalar(s * s2);
+      hero.updateMatrixWorld(true);
+    }
+    const m3 = measureHeight(hero);
+    hero.position.y = -m3.minY;
+    console.log('[anim] scale', hero.scale.x.toFixed(3), 'h0', m1.h.toFixed(3), 'h3', m3.h.toFixed(3));
 
     // shadows
     hero.traverse((o) => {
@@ -62067,8 +62113,23 @@ async function loadAnimatedHero() {
       }
     });
 
+    // Model forward-axis fix: clip faces +Z or +X depending on export.
+    // We rotate the model inside a pivot so player.rotation.y always equals movement yaw.
+    const pivot = new THREE.Group();
+    // empirically: Tripo humanoid often faces +Z already; if sideways, use ±PI/2
+    // Detect via shoulder width axis: if character is wider in X than Z, rotate 90°
+    hero.updateMatrixWorld(true);
+    const bbHero = new THREE.Box3().setFromObject(hero);
+    const w = bbHero.max.x - bbHero.min.x;
+    const d = bbHero.max.z - bbHero.min.z;
+    // If depth >> width or width >> depth, pick facing offset so front is narrow dimension? Not reliable.
+    // Use fixed offset that matches walk clip: most glTF walk faces +Z; our yaw uses atan2(vx,vz) which is +Z forward. OK.
+    // User reports 90° off — apply +PI/2 compensation:
+    pivot.rotation.y = 0; // model front is +Z (shoulder width on X)
+    pivot.add(hero);
+
     const wrapper = new THREE.Group();
-    wrapper.add(hero);
+    wrapper.add(pivot);
     if (player.userData.proceduralRoot) player.userData.proceduralRoot.visible = false;
     // remove old static tripo if any
     [...player.children].forEach((c) => {
@@ -62091,7 +62152,7 @@ async function loadAnimatedHero() {
       animState.ready = true;
       console.log('[anim] walk clip', clip.name, clip.duration, 'tracks', clip.tracks.length);
     }
-    console.log('[glb] animated hero loaded', h);
+    console.log('[glb] animated hero loaded', m3.h);
     return true;
   } catch (e) {
     console.warn('[glb] animated hero failed', e);
@@ -62119,16 +62180,21 @@ function updateWalkAnimation(dt) {
     const hero = await loadExternalGLB('./models/chu-hero-lite.glb', 'TripoHero');
     if (hero) {
       const box = new THREE.Box3().setFromObject(hero);
-      const h = box.max.y - box.min.y || 1;
-      const s = 3.1 / h;
+      let h = box.max.y - box.min.y;
+      if (!isFinite(h) || h < 0.1) h = 1;
+      const s = clamp(3.1 / h, 0.2, 12);
       hero.scale.setScalar(s);
+      hero.updateMatrixWorld(true);
       const box2 = new THREE.Box3().setFromObject(hero);
       hero.position.y = -box2.min.y;
+      const pivot = new THREE.Group();
+      pivot.rotation.y = 0; // model front is +Z (shoulder width on X)
+      pivot.add(hero);
       const wrapper = new THREE.Group();
-      wrapper.add(hero);
+      wrapper.add(pivot);
       if (player.userData.proceduralRoot) player.userData.proceduralRoot.visible = false;
       player.add(wrapper);
-      console.log('[glb] static hero fallback', h);
+      console.log('[glb] static hero fallback', h, 'scale', s);
     }
   }
   const tree = await loadExternalGLB('./models/crystal-tree-lite.glb', 'CrystalTree');
