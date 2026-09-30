@@ -55772,16 +55772,50 @@ function glbToGroup(u8, name = 'GLB') {
   root.name = name;
   if (!json) return root;
 
+  // embedded images -> THREE.Texture
+  const imageCache = [];
+  if (json.images && bin) {
+    json.images.forEach((img, ii) => {
+      try {
+        let bytes = null;
+        if (img.bufferView !== undefined) {
+          const bv = json.bufferViews[img.bufferView];
+          const start = bv.byteOffset || 0;
+          bytes = bin.subarray(start, start + bv.byteLength);
+        }
+        if (!bytes) { imageCache[ii] = null; return; }
+        const blob = new Blob([bytes], { type: img.mimeType || 'image/png' });
+        const url = URL.createObjectURL(blob);
+        const tex = new THREE.TextureLoader().load(url);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.flipY = false;
+        imageCache[ii] = tex;
+      } catch (e) {
+        imageCache[ii] = null;
+      }
+    });
+  }
+
+  function textureFromIndex(idx) {
+    if (idx === undefined || idx === null) return null;
+    const info = json.textures && json.textures[idx];
+    if (!info) return null;
+    const imgIdx = info.source;
+    return imageCache[imgIdx] || null;
+  }
+
   const materials = (json.materials || []).map((m) => {
     const p = m.pbrMetallicRoughness || {};
     const col = p.baseColorFactor || [1, 1, 1, 1];
     const em = m.emissiveFactor || [0, 0, 0];
+    const map = textureFromIndex(p.baseColorTexture && p.baseColorTexture.index);
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(col[0], col[1], col[2]),
+      map: map || null,
       roughness: p.roughnessFactor ?? 0.7,
       metalness: p.metalnessFactor ?? 0.15,
       emissive: new THREE.Color(em[0], em[1], em[2]),
-      emissiveIntensity: 0.85,
+      emissiveIntensity: 0.35,
       flatShading: false,
     });
   });
@@ -55879,12 +55913,14 @@ function getGhModel() {
 // ============================================================
 const player = new THREE.Group();
 player.name = 'Player';
+player.userData.useProcedural = true;
 // detailed GLB character (fallback to procedural if needed)
 {
   const chu = getChuModel();
   // scale to ~3 unit height like previous figure
   chu.scale.setScalar(1.05);
   player.add(chu);
+  player.userData.proceduralRoot = chu;
   // keep soft glow light
   const aura = new THREE.Mesh(
     new THREE.CylinderGeometry(0.7, 0.9, 2.6, 16, 1, true),
@@ -55916,6 +55952,56 @@ scene.add(player);
   rm.scale.setScalar(1.05);
   ruth.add(rm);
 }
+
+// ===== Tripo hero + crystal trees (external GLB) =====
+async function loadExternalGLB(url, name) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const buf = await r.arrayBuffer();
+    return glbToGroup(new Uint8Array(buf), name);
+  } catch (e) {
+    return null;
+  }
+}
+
+(async () => {
+  const hero = await loadExternalGLB('./models/chu-hero-lite.glb', 'TripoHero');
+  if (hero) {
+    // measure bounds and normalize height to ~3.1
+    const box = new THREE.Box3().setFromObject(hero);
+    const h = box.max.y - box.min.y || 1;
+    const s = 3.1 / h;
+    hero.scale.setScalar(s);
+    // center on feet
+    const box2 = new THREE.Box3().setFromObject(hero);
+    hero.position.y = -box2.min.y;
+    const wrapper = new THREE.Group();
+    wrapper.add(hero);
+    if (player.userData.proceduralRoot) player.userData.proceduralRoot.visible = false;
+    player.add(wrapper);
+    console.log('[glb] tripo hero loaded', h);
+  }
+  const tree = await loadExternalGLB('./models/crystal-tree-lite.glb', 'CrystalTree');
+  if (tree) {
+    const box = new THREE.Box3().setFromObject(tree);
+    const h = box.max.y - box.min.y || 1;
+    const s = 4.5 / h;
+    tree.scale.setScalar(s);
+    [
+      [-16, -120], [18, -132], [-28, -168], [30, -158],
+      [10, -175], [-8, -190], [40, -125], [-40, -145],
+    ].forEach(([x, z], i) => {
+      const t = tree.clone();
+      t.position.set(x, 0, z);
+      t.rotation.y = i * 0.7;
+      const bs = 0.85 + (i % 3) * 0.2;
+      t.scale.multiplyScalar(bs);
+      scene.add(t);
+    });
+    console.log('[glb] crystal trees planted');
+  }
+})();
 
 // optional external scene-props.glb (GitHub Pages / local models/)
 fetch('./models/scene-props.glb').then(r => {
