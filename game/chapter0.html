@@ -62125,7 +62125,7 @@ async function loadAnimatedHero() {
     // If depth >> width or width >> depth, pick facing offset so front is narrow dimension? Not reliable.
     // Use fixed offset that matches walk clip: most glTF walk faces +Z; our yaw uses atan2(vx,vz) which is +Z forward. OK.
     // User reports 90° off — apply +PI/2 compensation:
-    pivot.rotation.y = 0; // model front is +Z (shoulder width on X)
+    pivot.rotation.y = -Math.PI / 2; // trip/A-pose model faces +X; body forward is +Z
     pivot.add(hero);
 
     const wrapper = new THREE.Group();
@@ -62188,7 +62188,7 @@ function updateWalkAnimation(dt) {
       const box2 = new THREE.Box3().setFromObject(hero);
       hero.position.y = -box2.min.y;
       const pivot = new THREE.Group();
-      pivot.rotation.y = 0; // model front is +Z (shoulder width on X)
+      pivot.rotation.y = -Math.PI / 2; // trip/A-pose model faces +X; body forward is +Z
       pivot.add(hero);
       const wrapper = new THREE.Group();
       wrapper.add(pivot);
@@ -63251,8 +63251,13 @@ function updateMovement(dt) {
   if (keys.KeyA || keys.ArrowLeft) ix -= 1;
   if (keys.KeyD || keys.ArrowRight) ix += 1;
 
-  camForward.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
-  camRight.set(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
+  // Use the camera's true look direction on XZ (not a parallel formula)
+  camera.getWorldDirection(camForward);
+  camForward.y = 0;
+  if (camForward.lengthSq() < 1e-6) camForward.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
+  camForward.normalize();
+  // right = forward × up
+  camRight.crossVectors(camForward, camera.up).normalize();
 
   moveDir.set(0, 0, 0);
   moveDir.addScaledVector(camForward, iz);
@@ -63416,6 +63421,7 @@ updateGoalMarker();
 // test hooks (optional)
 window.__SHIJIE_CH0__ = {
   state,
+  camera,
   setQuest,
   showDialogue,
   player,
