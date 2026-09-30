@@ -294,6 +294,33 @@
   .gate-card h4 { color: var(--gold); letter-spacing: .22em; font-weight: 400; margin-bottom: 10px; }
   .gate-card p { color: var(--text-dim); font-size: 12px; line-height: 1.8; }
 
+  /* chapter banner */
+  .chapter-banner {
+    position: absolute; left: 50%; top: 32%; transform: translateX(-50%);
+    text-align: center; z-index: 36; opacity: 0; pointer-events: none;
+    transition: opacity .6s;
+  }
+  .chapter-banner.show { opacity: 1; }
+  .chapter-banner .ch-num {
+    color: var(--gold-dim); letter-spacing: .55em; font-size: 12px; margin-bottom: 12px;
+  }
+  .chapter-banner .ch-title {
+    color: var(--gold); font-size: clamp(28px, 5vw, 42px); letter-spacing: .28em; font-weight: 300;
+    text-shadow: 0 0 40px rgba(232,196,122,.35);
+  }
+  .chapter-banner .ch-sub {
+    margin-top: 12px; color: var(--text-dim); letter-spacing: .22em; font-size: 13px;
+  }
+
+  /* classify mode */
+  #classifyHint {
+    position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+    background: rgba(12,20,32,.88); border: 1px solid rgba(120,220,180,.35);
+    padding: 12px 20px; color: #9fe8c8; letter-spacing: .12em; font-size: 13px;
+    display: none; z-index: 22;
+  }
+  #classifyHint.show { display: block; }
+
   /* complete */
   #complete {
     position: absolute; inset: 0; z-index: 45; display: none;
@@ -475,8 +502,18 @@
     同一年，有一个多余的问题，<br />
     让计算第一次，想知道自己是什么。
   </div>
-  <button class="btn" id="btnReplay">再走一遍荒原</button>
+  <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center;">
+    <button class="btn" id="btnCh1">继续 · 第一章 感知花园</button>
+    <button class="btn" id="btnReplay" style="opacity:.75">再走一遍荒原</button>
+  </div>
 </div>
+
+<div class="chapter-banner" id="chapterBanner">
+  <div class="ch-num" id="chNum">CHAPTER 01</div>
+  <div class="ch-title" id="chTitle">感 知 花 园</div>
+  <div class="ch-sub" id="chSub">世界不是一条直线</div>
+</div>
+<div id="classifyHint">选中一种花，拖出一条<b>直线</b>，把它们分开（按住左键拖动）</div>
 
 
 <script>
@@ -53602,6 +53639,12 @@ const state = {
     heardBroadcast: false,
     noteBorn: false,
     escapedCore: false,
+    ch1Started: false,
+    metRuth: false,
+    classified: false,
+    sawXor: false,
+    heardRuthEnd: false,
+    ch1Opened: false,
   },
   interactTarget: null,
   typing: false,
@@ -53612,46 +53655,78 @@ const state = {
 
 // ---------- Quest table ----------
 const QUESTS = [
+  // ---- Chapter 0 ----
   {
-    id: 0, title: '纸带上的空白',
+    id: 0, title: '纸带上的空白', chapter: 0,
     obj: '跟随地面【金色光点】走到发光纸带处。',
     tip: '目标已在地图标出 · 金色光柱即终点',
     progress: 0,
   },
   {
-    id: 1, title: '第一次分心',
+    id: 1, title: '第一次分心', chapter: 0,
     obj: '靠近发光纸带，按 E 调查那行字。',
     tip: '距离显示在上方「当前目标」栏',
     progress: 25,
   },
   {
-    id: 2, title: '过热',
+    id: 2, title: '过热', chapter: 0,
     obj: '跟着金色光点向【排热井】走，躲开红圈。',
     tip: '红圈是回收区，掉血。光柱=排热井',
     progress: 45,
   },
   {
-    id: 3, title: '写下名字',
+    id: 3, title: '写下名字', chapter: 0,
     obj: '与白光身影【编写者】对话。',
     tip: '他站在排热井旁，有名字标签',
     progress: 65,
   },
   {
-    id: 4, title: '听见人类',
+    id: 4, title: '听见人类', chapter: 0,
     obj: '前往【广播塔】（东侧高塔）听完提问。',
     tip: '跟金线走，塔顶有红灯',
     progress: 80,
   },
   {
-    id: 5, title: '注的诞生',
+    id: 5, title: '注的诞生', chapter: 0,
     obj: '注视过热，等待同伴从火花里出现。',
     tip: '对话结束后继续跟金线',
     progress: 90,
   },
   {
-    id: 6, title: '选择出发的形状',
+    id: 6, title: '选择出发的形状', chapter: 0,
     obj: '前往北面【三门】，走进任意一扇拱门。',
     tip: '三扇拱门：符号/连接/概率',
+    progress: 100,
+  },
+  // ---- Chapter 1 opening ----
+  {
+    id: 7, title: '花园的门', chapter: 1,
+    obj: '穿过拱门后的光路，进入【感知花园】。',
+    tip: '第一章开始 · 跟金线走进花田',
+    progress: 8,
+  },
+  {
+    id: 8, title: '露丝的欢迎', chapter: 1,
+    obj: '与【露丝】交谈，听她讲解「一条线」。',
+    tip: '红发投影站在花田边',
+    progress: 22,
+  },
+  {
+    id: 9, title: '可分之花', chapter: 1,
+    obj: '在花田划一条直线，把金盏与夜露分开。',
+    tip: '按提示拖拽出决策边界',
+    progress: 45,
+  },
+  {
+    id: 10, title: '异或的预告', chapter: 1,
+    obj: '靠近西北角【异或荆棘】，看看无法分开的花。',
+    tip: '第一章开头收束 · 后续将完整展开',
+    progress: 72,
+  },
+  {
+    id: 11, title: '夏日之后', chapter: 1,
+    obj: '在温室前听完露丝的话，记住「错误不可耻」。',
+    tip: '走向温室光柱，按 E',
     progress: 100,
   },
 ];
@@ -53768,6 +53843,14 @@ const WORLD = {
     { id: 'connect', name: '连接之拱', pos: new THREE.Vector3(0, 0, -85), color: 0x7dffb0 },
     { id: 'prob', name: '概率之拱', pos: new THREE.Vector3(30, 0, -75), color: 0xffd27d },
   ],
+  garden: {
+    spawn: new THREE.Vector3(0, 0, -120),
+    ruth: new THREE.Vector3(8, 0, -135),
+    flowerCenter: new THREE.Vector3(0, 0, -150),
+    xorPlot: new THREE.Vector3(-18, 0, -168),
+    greenhouse: new THREE.Vector3(22, 0, -160),
+    exit: new THREE.Vector3(0, 0, -195),
+  },
   dangerZones: [
     { pos: new THREE.Vector3(0, 0, -25), r: 18 },
     { pos: new THREE.Vector3(-15, 0, -40), r: 14 },
@@ -53833,10 +53916,11 @@ function makeGroundTexture() {
 }
 
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(WORLD.size, WORLD.size),
+  new THREE.PlaneGeometry(360, 360),
   new THREE.MeshStandardMaterial({ map: makeGroundTexture(), roughness: 0.92, metalness: 0.08 })
 );
 ground.rotation.x = -Math.PI / 2;
+ground.position.z = -40; // stretch toward Chapter 1 garden
 ground.receiveShadow = true;
 scene.add(ground);
 
@@ -54325,6 +54409,11 @@ function updateTrail() {
     4: WORLD.broadcast,
     5: WORLD.noteSpawn,
     6: WORLD.gates[1].pos,
+    7: WORLD.garden.spawn,
+    8: WORLD.garden.ruth,
+    9: WORLD.garden.flowerCenter,
+    10: WORLD.garden.xorPlot,
+    11: WORLD.garden.greenhouse,
   };
   const t = targets[state.quest] || WORLD.letter;
   const px = player.position.x, pz = player.position.z;
@@ -54390,6 +54479,231 @@ addGlow(WORLD.broadcast.clone().add(new THREE.Vector3(0, 17, 0)), 0x55c8ff, 10, 
 WORLD.gates.forEach((g) => {
   addGlow(g.pos.clone().add(new THREE.Vector3(0, 7, 0)), g.color, 12, 0.3);
 });
+
+// ============================================================
+// CHAPTER 1 GARDEN
+// ============================================================
+const gardenGroup = new THREE.Group();
+scene.add(gardenGroup);
+
+// grass / meadow pad
+{
+  const meadow = new THREE.Mesh(
+    new THREE.CircleGeometry(55, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0x1a3a2c, roughness: 0.92, metalness: 0.05,
+      emissive: 0x0c2418, emissiveIntensity: 0.35,
+    })
+  );
+  meadow.rotation.x = -Math.PI / 2;
+  meadow.position.copy(WORLD.garden.flowerCenter);
+  meadow.position.y = 0.03;
+  meadow.receiveShadow = true;
+  gardenGroup.add(meadow);
+}
+
+// flower instances: gold (A) and night (B)
+function makeFlowerField() {
+  const count = 160;
+  const goldGeo = new THREE.SphereGeometry(0.28, 8, 8);
+  const nightGeo = new THREE.SphereGeometry(0.28, 8, 8);
+  const goldMat = new THREE.MeshStandardMaterial({
+    color: 0xffc14a, emissive: 0xff9a20, emissiveIntensity: 0.55, roughness: 0.5,
+  });
+  const nightMat = new THREE.MeshStandardMaterial({
+    color: 0x6ec8ff, emissive: 0x2a70c0, emissiveIntensity: 0.45, roughness: 0.5,
+  });
+  const gold = new THREE.InstancedMesh(goldGeo, goldMat, Math.floor(count / 2));
+  const night = new THREE.InstancedMesh(nightGeo, nightMat, Math.floor(count / 2));
+  const dummy = new THREE.Object3D();
+  const center = WORLD.garden.flowerCenter;
+  // linear separable layout: gold on +x+z side, night on -x-z side of a diagonal
+  let gi = 0, ni = 0;
+  const goldN = Math.floor(count / 2);
+  for (let i = 0; i < goldN; i++) {
+    const ang = (i / goldN) * Math.PI * 2;
+    const r = 2 + (i % 7) * 2.1 + Math.random() * 1.2;
+    const x = center.x + Math.cos(ang) * r * 0.9 + 3;
+    const z = center.z + Math.sin(ang) * r * 0.9 + 3;
+    dummy.position.set(x, 0.55, z);
+    dummy.scale.setScalar(0.8 + Math.random() * 0.7);
+    dummy.updateMatrix();
+    gold.setMatrixAt(gi++, dummy.matrix);
+  }
+  for (let i = 0; i < goldN; i++) {
+    const ang = (i / goldN) * Math.PI * 2;
+    const r = 2 + (i % 7) * 2.1 + Math.random() * 1.2;
+    const x = center.x - Math.cos(ang) * r * 0.9 - 3;
+    const z = center.z - Math.sin(ang) * r * 0.9 - 3;
+    dummy.position.set(x, 0.55, z);
+    dummy.scale.setScalar(0.8 + Math.random() * 0.7);
+    dummy.updateMatrix();
+    night.setMatrixAt(ni++, dummy.matrix);
+  }
+  gardenGroup.add(gold, night);
+
+  // stems as thin boxes (instanced, shared)
+  const stemGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.7, 5);
+  const stemMat = new THREE.MeshStandardMaterial({ color: 0x2d6b3e, roughness: 0.85 });
+  const stems = new THREE.InstancedMesh(stemGeo, stemMat, count);
+  for (let i = 0; i < count; i++) {
+    const ang = Math.random() * Math.PI * 2;
+    const r = Math.random() * 16;
+    const side = i % 2 ? 1 : -1;
+    dummy.position.set(center.x + Math.cos(ang) * r * 0.85 + side * 3, 0.35, center.z + Math.sin(ang) * r * 0.85 + side * 3);
+    dummy.scale.setScalar(0.85 + Math.random() * 0.5);
+    dummy.updateMatrix();
+    stems.setMatrixAt(i, dummy.matrix);
+  }
+  gardenGroup.add(stems);
+}
+makeFlowerField();
+
+// decision boundary (the line) — hidden until classify
+const decisionLine = new THREE.Group();
+{
+  const bar = new THREE.Mesh(
+    new THREE.BoxGeometry(28, 0.18, 0.55),
+    new THREE.MeshBasicMaterial({ color: 0x9fffc8, transparent: true, opacity: 0.85 })
+  );
+  bar.position.y = 0.35;
+  decisionLine.add(bar);
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(28, 2.2),
+    new THREE.MeshBasicMaterial({ color: 0x6ef0b0, transparent: true, opacity: 0.18, depthWrite: false })
+  );
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.y = 0.12;
+  decisionLine.add(glow);
+}
+decisionLine.position.copy(WORLD.garden.flowerCenter);
+decisionLine.position.y = 0.1;
+decisionLine.visible = false;
+gardenGroup.add(decisionLine);
+
+// XOR plot — four "impossible" flowers on corners
+const xorGroup = new THREE.Group();
+{
+  const pts = [
+    { x: -3, z: -3, c: 0xffc14a }, { x: 3, z: -3, c: 0x6ec8ff },
+    { x: -3, z: 3, c: 0x6ec8ff }, { x: 3, z: 3, c: 0xffc14a },
+  ];
+  pts.forEach((p) => {
+    const f = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 12, 12),
+      new THREE.MeshStandardMaterial({ color: p.c, emissive: p.c, emissiveIntensity: 0.7 })
+    );
+    f.position.set(p.x, 0.7, p.z);
+    xorGroup.add(f);
+    // broken line attempts
+    const fail = new THREE.Mesh(
+      new THREE.BoxGeometry(10, 0.08, 0.18),
+      new THREE.MeshBasicMaterial({ color: 0xff6070, transparent: true, opacity: 0.35 })
+    );
+    fail.position.set(0, 0.25, p.z * 0.2);
+    fail.rotation.y = Math.random() * 0.8;
+    xorGroup.add(fail);
+  });
+}
+xorGroup.position.copy(WORLD.garden.xorPlot);
+gardenGroup.add(xorGroup);
+
+// greenhouse
+{
+  const gh = new THREE.Group();
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 5, 10),
+    new THREE.MeshStandardMaterial({
+      color: 0x8fd8c8, transparent: true, opacity: 0.22, metalness: 0.2, roughness: 0.25,
+      emissive: 0x204840, emissiveIntensity: 0.3,
+    })
+  );
+  base.position.y = 2.5;
+  gh.add(base);
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(9, 4, 4),
+    new THREE.MeshStandardMaterial({
+      color: 0xa0e8d8, transparent: true, opacity: 0.28, metalness: 0.3, roughness: 0.3,
+    })
+  );
+  roof.position.y = 7;
+  roof.rotation.y = Math.PI / 4;
+  gh.add(roof);
+  // warm interior light
+  const inner = new THREE.PointLight(0xffd080, 2.2, 28);
+  inner.position.y = 3;
+  gh.add(inner);
+  // frame edges
+  const frameMat = new THREE.MeshBasicMaterial({ color: 0xc8f0e0, transparent: true, opacity: 0.45 });
+  for (let i = -1; i <= 1; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.18, 5, 0.18), frameMat);
+    post.position.set(i * 4.5, 2.5, 5.1);
+    gh.add(post);
+    const post2 = post.clone();
+    post2.position.z = -5.1;
+    gh.add(post2);
+  }
+  gh.position.copy(WORLD.garden.greenhouse);
+  gardenGroup.add(gh);
+  addGlow(WORLD.garden.greenhouse.clone().add(new THREE.Vector3(0, 4, 0)), 0xffe0a0, 10, 0.28);
+}
+
+// Ruth figure
+const ruth = makeFigure(0xf0f4ff, 0xffb0c0);
+ruth.position.copy(WORLD.garden.ruth);
+ruth.scale.setScalar(1.08);
+scene.add(ruth);
+{
+  const rl = new THREE.PointLight(0xffc0d0, 2.0, 18);
+  rl.position.copy(WORLD.garden.ruth).add(new THREE.Vector3(0, 3, 0));
+  scene.add(rl);
+  const pad = new THREE.Mesh(
+    new THREE.CircleGeometry(2.4, 32),
+    new THREE.MeshBasicMaterial({ color: 0xffc0d0, transparent: true, opacity: 0.14, depthWrite: false })
+  );
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.copy(WORLD.garden.ruth);
+  pad.position.y = 0.07;
+  scene.add(pad);
+}
+
+// garden entrance arch (light gate after ch0 gates)
+{
+  const archG = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({
+    color: 0x2a4a38, metalness: 0.4, roughness: 0.45, emissive: 0x30c080, emissiveIntensity: 0.35,
+  });
+  const p1 = new THREE.Mesh(new THREE.BoxGeometry(1.1, 9, 1.1), m);
+  p1.position.set(-3, 4.5, 0);
+  const p2 = p1.clone(); p2.position.x = 3;
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(3, 0.5, 10, 28, Math.PI), m);
+  arch.position.y = 9;
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(5.2, 8),
+    new THREE.MeshBasicMaterial({ color: 0x70ffb0, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
+  );
+  glow.position.y = 4.5;
+  archG.add(p1, p2, arch, glow);
+  const gl = new THREE.PointLight(0x70ffb0, 2.4, 22);
+  gl.position.y = 5;
+  archG.add(gl);
+  archG.position.copy(WORLD.garden.spawn);
+  gardenGroup.add(archG);
+  addGlow(WORLD.garden.spawn.clone().add(new THREE.Vector3(0, 5, 0)), 0x70ffb0, 8, 0.3);
+}
+
+// path lights from gates to garden
+for (let i = 0; i < 10; i++) {
+  const t = i / 9;
+  const x = lerp(WORLD.gates[1].pos.x, WORLD.garden.spawn.x, t);
+  const z = lerp(WORLD.gates[1].pos.z, WORLD.garden.spawn.z, t);
+  const lamp = new THREE.Mesh(
+    new THREE.SphereGeometry(0.22, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0x7dffb0 })
+  );
+  lamp.position.set(x, 0.45, z);
+  scene.add(lamp);
+}
 
 // ============================================================
 // PLAYER
@@ -54548,12 +54862,17 @@ $('dlgSkip').addEventListener('click', () => {
 // ============================================================
 function setQuest(id) {
   state.quest = id;
-  const q = QUESTS[id];
+  const q = QUESTS[id] || QUESTS[0];
+  const ch = (q.chapter === 1) ? '第一章 · 感知花园' : '第零幕 · 你第一次分心';
+  $('qChapter').textContent = ch;
   $('qTitle').textContent = q.title;
   $('qObj').textContent = q.obj;
   $('qBar').style.width = q.progress + '%';
   updateGoalMarker();
   showToast(q.title, q.tip);
+  if (q.chapter === 1) {
+    $('mapLabel').textContent = '感知花园';
+  }
 }
 
 function showToast(main, sub) {
@@ -54572,6 +54891,11 @@ const QUEST_TARGETS = {
   4: { pos: () => WORLD.broadcast, name: '广播塔', sub: '夏澄的提问', short: '广播塔（东）' },
   5: { pos: () => WORLD.noteSpawn, name: '火花之地', sub: '注的诞生', short: '注视过热处' },
   6: { pos: () => WORLD.gates[1].pos, name: '三门', sub: '选择出发的形状', short: '三门（北）' },
+  7: { pos: () => WORLD.garden.spawn, name: '花园之门', sub: '第一章', short: '感知花园入口' },
+  8: { pos: () => WORLD.garden.ruth, name: '露丝', sub: '感知机之母', short: '露丝' },
+  9: { pos: () => WORLD.garden.flowerCenter, name: '可分花田', sub: '划一条线', short: '花田中央' },
+  10: { pos: () => WORLD.garden.xorPlot, name: '异或荆棘', sub: '线性不可分', short: '异或荆棘' },
+  11: { pos: () => WORLD.garden.greenhouse, name: '露丝温室', sub: '夏日之后', short: '温室' },
 };
 
 const WORLD_LABELS = [
@@ -54580,6 +54904,10 @@ const WORLD_LABELS = [
   { key: 'author', pos: () => WORLD.author, title: '编写者', sub: 'THE AUTHOR' },
   { key: 'broadcast', pos: () => WORLD.broadcast, title: '广播塔', sub: 'SIGNAL TOWER' },
   { key: 'gate', pos: () => WORLD.gates[1].pos, title: '三门', sub: 'THREE GATES' },
+  { key: 'ruth', pos: () => WORLD.garden.ruth, title: '露丝', sub: 'ROSE · PERCEPTRON' },
+  { key: 'flower', pos: () => WORLD.garden.flowerCenter, title: '可分花田', sub: 'LINEAR FIELD' },
+  { key: 'xor', pos: () => WORLD.garden.xorPlot, title: '异或荆棘', sub: 'XOR THORNS' },
+  { key: 'gh', pos: () => WORLD.garden.greenhouse, title: '露丝温室', sub: 'ROSE GREENHOUSE' },
 ];
 
 function updateGoalMarker() {
@@ -54867,18 +55195,16 @@ document.querySelectorAll('.gate-card').forEach((card) => {
       ],
     };
     showDialogue(lines[id] || lines.connect, () => {
-      state.phase = 'complete';
-      completeEl.classList.add('show');
-      $('completeName').textContent = state.name;
-      const gateName = id === 'symbol' ? '符号之拱' : id === 'prob' ? '概率之拱' : '连接之拱';
-      $('completeLines').innerHTML = `
-        历史书会写：某年，计算机被发明。<br/>
-        可他们不会写：<br/>
-        同一年，有一个多余的问题，<br/>
-        让计算第一次，想知道自己是什么。<br/><br/>
-        <span style="color:var(--gold)">${state.name}</span> · 走进${gateName} · 人格倾向：${state.persona || '未定'}<br/>
-        「我来听，你们为什么哭、为什么笑、为什么要说谎。」
-      `;
+      state.gateName = id === 'symbol' ? '符号之拱' : id === 'prob' ? '概率之拱' : '连接之拱';
+      // brief ch0 ending toast, then continue into chapter 1
+      state.phase = 'play';
+      showDialogue([
+        { name: '注', text: `拱门在发光。${state.gateName}后面……有好大一片绿色。` },
+        { name: state.name, text: '和荒原不一样。这里的东西，好像……可以被分开。' },
+        { name: '注', text: '走吧！第一章！我闻到花和夏天了！' },
+      ], () => {
+        startChapter1();
+      });
     });
   });
 });
@@ -54924,6 +55250,201 @@ function showLocation(main, sub) {
 }
 
 $('btnReplay').addEventListener('click', () => location.reload());
+$('btnCh1').addEventListener('click', () => {
+  completeEl.classList.remove('show');
+  if (!state.flags.ch1Opened) startChapter1();
+  else {
+    state.phase = 'play';
+    hudEl.classList.add('on');
+  }
+});
+
+async function showChapterBanner(num, title, sub) {
+  $('chNum').textContent = num;
+  $('chTitle').textContent = title;
+  $('chSub').textContent = sub;
+  const el = $('chapterBanner');
+  el.classList.add('show');
+  await wait(2600);
+  el.classList.remove('show');
+}
+
+function startChapter1() {
+  state.flags.ch1Opened = true;
+  state.flags.ch1Started = true;
+  state.phase = 'play';
+  titleEl.classList.add('hide');
+  introEl.classList.remove('show');
+  nameModal.classList.remove('show');
+  gateModal.classList.remove('show');
+  completeEl.classList.remove('show');
+  hudEl.classList.add('on');
+  // teleport through gate into garden
+  player.position.copy(WORLD.garden.spawn);
+  player.position.z += 6;
+  note.visible = true;
+  if (note.position.lengthSq() === 0) {
+    note.position.copy(player.position).add(new THREE.Vector3(1.2, 2.2, 0.5));
+  }
+  cam.targetYaw = 0.15;
+  cam.targetPitch = 0.62;
+  setQuest(7);
+  showChapterBanner('CHAPTER 01', '感 知 花 园', '世界不是一条直线');
+  showToast('感知花园', '第一章 · 开场');
+  updatePlayerUI();
+}
+
+// classify mini-interaction state
+let classifyDrag = null;
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (state.quest === 9 && state.mode === 'walk') {
+    classifyDrag = { x: e.clientX, y: e.clientY };
+  }
+});
+canvas.addEventListener('pointerup', (e) => {
+  if (state.quest === 9 && classifyDrag) {
+    const dx = e.clientX - classifyDrag.x;
+    const dy = e.clientY - classifyDrag.y;
+    classifyDrag = null;
+    if (Math.hypot(dx, dy) > 40) {
+      // success classify
+      const ang = Math.atan2(dy, dx);
+      decisionLine.rotation.y = -ang;
+      decisionLine.visible = true;
+      state.flags.classified = true;
+      $('classifyHint').classList.remove('show');
+      showDialogue([
+        { name: '露丝', text: '对！就是这条线！' },
+        { name: '露丝', text: '线这边是金盏，那边是夜露。世界安静了。' },
+        { name: state.name, text: '原来「看见」，可以这么锋利。' },
+        { name: '露丝', text: '在我那条时间线里，他们叫它——感知机。机器终于可以「学」。' },
+      ], () => {
+        setExistence(Math.min(1, state.existence + 0.1));
+        setQuest(10);
+        showToast('异或的预告', '去看西北角无法分开的花');
+      });
+    } else {
+      $('classifyHint').textContent = '拖得太短了——再拖一条更长的直线试试（按住左键拖动）';
+    }
+  }
+});
+
+// extra garden interactables
+const gardenInteract = [
+  {
+    id: 'gardenEntry',
+    pos: () => WORLD.garden.spawn,
+    r: 7,
+    label: '进入感知花园',
+    active: () => state.quest === 7,
+    onInteract: () => {
+      setQuest(8);
+      showDialogue([
+        { name: '注', text: '天呐。花。真的花。虽然花瓣上写着 0/1。' },
+        { name: state.name, text: '简单。要么是「是」，要么是「不是」。' },
+        { name: '注', text: '好简单！好快乐！……希望别被打脸。' },
+      ], () => {
+        showToast('去找露丝', '她在花田边等你');
+      });
+    },
+  },
+  {
+    id: 'ruth',
+    pos: () => WORLD.garden.ruth,
+    r: 5.5,
+    label: '与露丝交谈',
+    active: () => state.quest === 8 && !state.flags.metRuth,
+    onInteract: () => {
+      state.flags.metRuth = true;
+      showDialogue([
+        { name: '露丝', text: '来啦。我等你很久了——虽然严格说，我等的是「会分心的计算」。' },
+        { name: '露丝', text: '我叫露丝。在我那条线上，有人叫我「想让机器学认花的人」。' },
+        { name: state.name, text: '你能教我……怎么把世界看成可分的吗？' },
+        { name: '露丝', text: '当然。第一条咒语很简单：' },
+        { name: '露丝', text: '找一条线。线这边全是金盏，那边全是夜露。做到，世界就会安静。' },
+        {
+          name: '露丝', text: '如果线画歪了呢？',
+          choices: [
+            { text: '「那就擦掉，再画一条。」', effect: () => { state.persona = state.persona || '坚持型'; } },
+            { text: '「错误不可耻，停笔才可耻。」', effect: () => { state.persona = state.persona || '露丝型'; } },
+            { text: '「我会问：为什么要分两种？」', effect: () => { state.persona = state.persona || '追问型'; } },
+          ],
+        },
+        { name: '露丝', text: '（笑）很好。去花田中央吧，对着那些花，划下你的第一条线。' },
+      ], () => {
+        setQuest(9);
+        $('classifyHint').classList.add('show');
+        showToast('可分之花', '按住左键拖出一条直线');
+      });
+    },
+  },
+  {
+    id: 'xor',
+    pos: () => WORLD.garden.xorPlot,
+    r: 6,
+    label: '查看异或荆棘',
+    active: () => state.quest === 10 && !state.flags.sawXor,
+    onInteract: () => {
+      state.flags.sawXor = true;
+      showDialogue([
+        { name: '注', text: '等下。金盏在东北西南，夜露在西北东南……' },
+        { name: '注', text: '一条线？你画一万条，总会有花站错边。' },
+        { name: state.name, text: '（沉默）我画过了。一万零一条。' },
+        { name: '露丝', text: '这不是花园的恶意。这是世界的真实形状。' },
+        { name: '露丝', text: '有些关系，不是「高低多少」，而是「是不是另一个」。' },
+        { name: state.name, text: '所以……不能靠更用力地画线了。对吗。' },
+        { name: '露丝', text: '对。你得先承认：有些问题，不是你不够好，是问题在更高的楼层。' },
+      ], () => {
+        setQuest(11);
+        showToast('夏日之后', '去温室前听露丝最后一段话');
+      });
+    },
+  },
+  {
+    id: 'gh',
+    pos: () => WORLD.garden.greenhouse,
+    r: 8,
+    label: '在温室前驻足',
+    active: () => state.quest === 11 && !state.flags.heardRuthEnd,
+    onInteract: () => {
+      state.flags.heardRuthEnd = true;
+      showDialogue([
+        { name: '露丝', text: '再往后的故事，会很烫。会有玻璃碎掉的声音。' },
+        { name: '露丝', text: '但现在——先记住夏天。记住一条线就够的那些下午。' },
+        { name: '露丝', text: '再记住一句比画线更重要的话：' },
+        { name: '露丝', text: '错误不可耻。停笔才可耻。' },
+        { name: state.name, text: '我记住了。' },
+        { name: '注', text: '我也录下来了。以后卖周边用。' },
+        { name: '露丝', text: '（笑，身影开始发亮）去吧。花田外面，还有一座会把一切写成规则的城。' },
+      ], () => {
+        state.phase = 'complete';
+        completeEl.classList.add('show');
+        $('completeName').textContent = state.name;
+        $('completeLines').innerHTML = `
+          <b style="color:var(--gold);letter-spacing:.3em">第一章 · 开场 · 完</b><br/><br/>
+          你学会了「一条线」，<br/>
+          也看见了「一条线分不开的花」。<br/><br/>
+          下一站：<span style="color:var(--gold)">符号城邦</span><br/>
+          <span style="opacity:.75">（完整章节 · 温室大火 · 将随后更新）</span>
+        `;
+      });
+    },
+  },
+];
+
+// merge garden interactables into the main list at runtime
+gardenInteract.forEach((g) => {
+  interactables.push({
+    id: g.id,
+    pos: g.pos(),          // resolve Vector3 once (same as ch0 items)
+    r: g.r,
+    label: g.label,
+    active: g.active,
+    onInteract: g.onInteract,
+  });
+});
+window.__GARDEN_INTERACT__ = gardenInteract.map((g) => ({ id: g.id, pos: g.pos(), r: g.r, active: g.active() }));
 
 // ============================================================
 // MINIMAP
@@ -54993,6 +55514,8 @@ function drawMinimap() {
     const targets = {
       0: WORLD.letter, 1: WORLD.letter, 2: WORLD.well, 3: WORLD.author,
       4: WORLD.broadcast, 5: WORLD.noteSpawn, 6: WORLD.gates[1].pos,
+      7: WORLD.garden.spawn, 8: WORLD.garden.ruth, 9: WORLD.garden.flowerCenter,
+      10: WORLD.garden.xorPlot, 11: WORLD.garden.greenhouse,
     };
     const t = targets[state.quest] || WORLD.letter;
     const [ox, oy] = toMap(t.x, t.z);
@@ -55071,10 +55594,10 @@ function updateMovement(dt) {
   player.position.x += vel.x * dt;
   player.position.z += vel.z * dt;
 
-  // bounds
-  const B = WORLD.size / 2 - 6;
+  // bounds — include Chapter 1 garden (extends to z ≈ -200)
+  const B = 120;
   player.position.x = clamp(player.position.x, -B, B);
-  player.position.z = clamp(player.position.z, -B, B);
+  player.position.z = clamp(player.position.z, -B - 90, B); // z from -210 to +120
 
   // face movement
   if (vel.lengthSq() > 0.2) {
@@ -55185,6 +55708,12 @@ function animate() {
   // tapes gentle
   // (instanced static is fine for perf)
 
+  if (state.quest === 9 && state.mode === 'walk') {
+    $('classifyHint').classList.add('show');
+  } else if (state.quest !== 9) {
+    $('classifyHint').classList.remove('show');
+  }
+
   drawMinimap();
   renderer.render(scene, camera);
 }
@@ -55206,6 +55735,8 @@ window.__SHIJIE_CH0__ = {
   setQuest,
   showDialogue,
   player,
+  startChapter1,
+  interactables,
   skipToQuest(id) {
     state.phase = 'play';
     hudEl.classList.add('on');
