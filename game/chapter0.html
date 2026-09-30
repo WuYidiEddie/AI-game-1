@@ -62145,12 +62145,27 @@ async function loadAnimatedHero() {
     // animation mixer
     if (gltf.animations && gltf.animations.length) {
       animState.mixer = new THREE.AnimationMixer(hero);
-      const clip = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+      const raw = gltf.animations.find((c) => /walk/i.test(c.name)) || gltf.animations[0];
+      // Strip root motion: keep rotations only so gameplay owns world position
+      const kept = raw.tracks.filter((tr) => {
+        const n = tr.name || '';
+        // drop translation channels (they cause sliding / teleporting)
+        if (/\.position$/.test(n) || /\.position\./.test(n)) return false;
+        // drop hips/root translation variants
+        if (/position/i.test(n)) return false;
+        return true;
+      });
+      const clip = new THREE.AnimationClip(raw.name + '_inplace', raw.duration, kept);
       animState.walkAction = animState.mixer.clipAction(clip);
       animState.walkAction.play();
-      animState.walkAction.paused = false;
+      animState.walkAction.paused = true;
+      animState.walkAction.timeScale = 0;
       animState.ready = true;
-      console.log('[anim] walk clip', clip.name, clip.duration, 'tracks', clip.tracks.length);
+      animState.restPos = new Map();
+      hero.traverse((o) => {
+        if (o.isBone) animState.restPos.set(o, o.position.clone());
+      });
+      console.log('[anim] walk clip', clip.name, 'tracks', clip.tracks.length, 'from', raw.tracks.length);
     }
     console.log('[glb] animated hero loaded', m3.h);
     return true;
@@ -62164,14 +62179,33 @@ async function loadAnimatedHero() {
 function updateWalkAnimation(dt) {
   if (!animState.ready || !animState.mixer) return;
   const sp = Math.hypot(vel.x, vel.z);
-  const moving = sp > 0.4;
-  // map speed 0..14 -> timeScale 0..1.35
-  const ts = clamp(sp / 9, 0, 1.4);
+  const moving = sp > 0.5;
+  const targetTs = moving ? clamp(sp / 9, 0.55, 1.35) : 0;
   if (animState.walkAction) {
-    animState.walkAction.paused = !moving;
-    animState.walkAction.timeScale = moving ? Math.max(0.55, ts) : 0;
+    // smooth timescale to avoid pops
+    animState.walkAction.timeScale = lerp(animState.walkAction.timeScale, targetTs, 1 - Math.pow(0.002, dt));
+    animState.walkAction.paused = false;
+    if (!moving && animState.walkAction.timeScale < 0.05) {
+      animState.walkAction.timeScale = 0;
+    }
   }
-  animState.mixer.update(moving ? dt * (0.85 + ts * 0.35) : dt * 0.15);
+  animState.mixer.update(dt);
+  // hard zero any leftover root translation so the body never teleports
+  const hero = animState.mixer.getRoot();
+  if (hero) {
+    hero.traverse((o) => {
+      if (o.isBone && /root|hips|pelvis|hip/i.test(o.name || '')) {
+        // keep animated rotation; only cancel inherited translation spikes
+        if (animState.restPos && animState.restPos.has(o)) {
+          const rest = animState.restPos.get(o);
+          // blend tiny bob only if extreme
+          if (Math.abs(o.position.x - rest.x) > 0.25) o.position.x = rest.x;
+          if (Math.abs(o.position.z - rest.z) > 0.25) o.position.z = rest.z;
+          if (Math.abs(o.position.y - rest.y) > 0.35) o.position.y = rest.y;
+        }
+      }
+    });
+  }
 }
 
 (async () => {
