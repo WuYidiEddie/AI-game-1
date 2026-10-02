@@ -60740,7 +60740,7 @@ wellGroup.add(wellLight);
 }
 wellGroup.position.copy(WORLD.well);
 scene.add(wellGroup);
-addCircleCollider(WORLD.well.x, WORLD.well.z, 4.6);
+addCircleCollider(WORLD.well.x, WORLD.well.z, 8.2);
 
 // ---- author (编写者) ----
 function makeFigure(color, accent) {
@@ -62742,7 +62742,7 @@ const interactables = [
   {
     id: 'well',
     pos: WORLD.well,
-    r: 8.5,
+    r: 11, // > collider 8.2 + player 0.55, so E works without entering
     label: '靠近排热井',
     active: () => state.quest === 2,
     onInteract: () => {
