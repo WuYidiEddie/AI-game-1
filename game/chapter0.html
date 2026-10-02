@@ -59762,6 +59762,8 @@ const state = {
     sawXor: false,
     heardRuthEnd: false,
     ch1Opened: false,
+    fireStarted: false,
+    plates: 0,
   },
   interactTarget: null,
   typing: false,
@@ -59844,6 +59846,50 @@ const QUESTS = [
     id: 11, title: '夏日之后', chapter: 1,
     obj: '在温室前听完露丝的话，记住「错误不可耻」。',
     tip: '走向温室光柱，按 E',
+    progress: 100,
+  },
+  // ---- Chapter 1 climax ----
+  {
+    id: 12, title: '温室大火', chapter: 1,
+    obj: '抢救【权重盘】：从火光中收集 3 枚。',
+    tip: '红焰处拾取，别停太久',
+    progress: 20,
+  },
+  {
+    id: 13, title: '火后的苗床', chapter: 1,
+    obj: '在残差苗床埋下一颗种子。',
+    tip: '温室后方，安静的一幕',
+    progress: 55,
+  },
+  {
+    id: 14, title: '通往城邦', chapter: 1,
+    obj: '沿大道前往【符号城邦】。',
+    tip: '第二章开始',
+    progress: 100,
+  },
+  // ---- Chapter 2 opening ----
+  {
+    id: 15, title: '规则之门', chapter: 2,
+    obj: '进入符号城邦，阅读【规则法典】。',
+    tip: '水晶城 · 第二章',
+    progress: 15,
+  },
+  {
+    id: 16, title: 'if-then 的洗礼', chapter: 2,
+    obj: '用 3 条规则点亮【审判水晶】。',
+    tip: '靠近水晶按 E，依次激活',
+    progress: 45,
+  },
+  {
+    id: 17, title: '例外卷宗', chapter: 2,
+    obj: '找到被禁止的【例外之书】。',
+    tip: '城邦角落，偏见主教曾路过',
+    progress: 75,
+  },
+  {
+    id: 18, title: '写不进规则的人', chapter: 2,
+    obj: '听完算符与你的对话。',
+    tip: '本章收束',
     progress: 100,
   },
 ];
@@ -60250,6 +60296,20 @@ const WORLD = {
     xorPlot: new THREE.Vector3(-18, 0, -168),
     greenhouse: new THREE.Vector3(22, 0, -160),
     exit: new THREE.Vector3(0, 0, -195),
+    // fire chapter
+    nursery: new THREE.Vector3(-8, 0, -188),
+    fire1: new THREE.Vector3(18, 0, -168),
+    fire2: new THREE.Vector3(26, 0, -155),
+    fire3: new THREE.Vector3(12, 0, -175),
+  },
+  city: {
+    gate: new THREE.Vector3(0, 0, -215),
+    codex: new THREE.Vector3(-6, 0, -235),
+    crystal1: new THREE.Vector3(0, 0, -248),
+    crystal2: new THREE.Vector3(8, 0, -248),
+    crystal3: new THREE.Vector3(-8, 0, -248),
+    exception: new THREE.Vector3(14, 0, -258),
+    operator: new THREE.Vector3(0, 0, -268),
   },
   dangerZones: [
     { pos: new THREE.Vector3(0, 0, -25), r: 18 },
@@ -61082,6 +61142,13 @@ function updateTrail() {
     9: WORLD.garden.flowerCenter,
     10: WORLD.garden.xorPlot,
     11: WORLD.garden.greenhouse,
+    12: WORLD.garden.fire1,
+    13: WORLD.garden.nursery,
+    14: WORLD.city.gate,
+    15: WORLD.city.codex,
+    16: WORLD.city.crystal1,
+    17: WORLD.city.exception,
+    18: WORLD.city.operator,
   };
   const t = targets[state.quest] || WORLD.letter;
   const px = player.position.x, pz = player.position.z;
@@ -62326,6 +62393,245 @@ function getGhModel() {
 }
 
 // ============================================================
+// CHAPTER 1 FIRE + CHAPTER 2 SYMBOL CITY
+// ============================================================
+const cityGroup = new THREE.Group();
+scene.add(cityGroup);
+const fireGroup = new THREE.Group();
+scene.add(fireGroup);
+
+// extend ground toward city
+{
+  const road = new THREE.Mesh(
+    new THREE.BoxGeometry(10, 0.16, 70),
+    new THREE.MeshStandardMaterial({ color: 0x2a3548, roughness: 0.8, metalness: 0.18, emissive: 0x101828, emissiveIntensity: 0.2 })
+  );
+  road.position.set(0, 0.08, -235);
+  road.receiveShadow = true;
+  scene.add(road);
+}
+
+// city walls / towers
+function addCrystalTower(x, z, h, color = 0x8fd0ff) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 2.8, h, 6),
+    new THREE.MeshStandardMaterial({
+      color: 0x2a3c58, roughness: 0.35, metalness: 0.55,
+      emissive: 0x183050, emissiveIntensity: 0.45,
+    })
+  );
+  body.position.y = h / 2;
+  body.castShadow = true;
+  g.add(body);
+  for (let i = 0; i < 6; i++) {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(2.2, 0.12, 6, 18),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.45 })
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = h * (0.15 + i * 0.13);
+    g.add(ring);
+  }
+  const tip = new THREE.Mesh(new THREE.OctahedronGeometry(1.3, 0), new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: 0.9, metalness: 0.4, roughness: 0.3,
+  }));
+  tip.position.y = h + 1.2;
+  g.add(tip);
+  g.position.set(x, 0, z);
+  cityGroup.add(g);
+  addCircleCollider(x, z, 2.2);
+}
+addCrystalTower(-18, -230, 28, 0x8fd0ff);
+addCrystalTower(18, -230, 32, 0xa0e0ff);
+addCrystalTower(-22, -255, 24, 0x7ac8ff);
+addCrystalTower(22, -255, 26, 0x8fd0ff);
+
+// city gate
+{
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x2c4060, metalness: 0.5, roughness: 0.4,
+    emissive: 0x2a60a0, emissiveIntensity: 0.4,
+  });
+  const p1 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 14, 1.5), mat);
+  p1.position.set(-4, 7, 0);
+  const p2 = p1.clone(); p2.position.x = 4;
+  const arch = new THREE.Mesh(new THREE.TorusGeometry(4, 0.7, 10, 24, Math.PI), mat);
+  arch.position.y = 14;
+  const glow = new THREE.Mesh(
+    new THREE.PlaneGeometry(7, 12),
+    new THREE.MeshBasicMaterial({ color: 0x6ec8ff, transparent: true, opacity: 0.2, side: THREE.DoubleSide, depthWrite: false })
+  );
+  glow.position.y = 7;
+  g.add(p1, p2, arch, glow);
+  const light = new THREE.PointLight(0x6ec8ff, 2.5, 30);
+  light.position.y = 8;
+  g.add(light);
+  g.position.copy(WORLD.city.gate);
+  cityGroup.add(g);
+  addCircleCollider(WORLD.city.gate.x - 4, WORLD.city.gate.z, 1.2);
+  addCircleCollider(WORLD.city.gate.x + 4, WORLD.city.gate.z, 1.2);
+}
+
+// codex pedestal
+{
+  const ped = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.4, 1.8, 1.6, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a3850, roughness: 0.5, metalness: 0.45, emissive: 0x1a3050, emissiveIntensity: 0.35 })
+  );
+  ped.position.copy(WORLD.city.codex);
+  ped.position.y = 0.8;
+  ped.castShadow = true;
+  cityGroup.add(ped);
+  const book = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 0.25, 1.1),
+    new THREE.MeshStandardMaterial({ color: 0x80c8ff, emissive: 0x40a0ff, emissiveIntensity: 1.1, metalness: 0.3, roughness: 0.35 })
+  );
+  book.position.copy(WORLD.city.codex);
+  book.position.y = 1.75;
+  cityGroup.add(book);
+  addGlow(WORLD.city.codex.clone().add(new THREE.Vector3(0, 2.2, 0)), 0x60b0ff, 5, 0.35);
+  addCircleCollider(WORLD.city.codex.x, WORLD.city.codex.z, 1.6);
+}
+
+// three judgment crystals
+const crystals = [
+  { pos: WORLD.city.crystal1, lit: false },
+  { pos: WORLD.city.crystal2, lit: false },
+  { pos: WORLD.city.crystal3, lit: false },
+];
+crystals.forEach((c, i) => {
+  const m = new THREE.Mesh(
+    new THREE.OctahedronGeometry(1.1, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0x3a5878, emissive: 0x203850, emissiveIntensity: 0.3,
+      metalness: 0.45, roughness: 0.35,
+    })
+  );
+  m.position.copy(c.pos);
+  m.position.y = 1.6;
+  cityGroup.add(m);
+  c.mesh = m;
+  addGlow(c.pos.clone().add(new THREE.Vector3(0, 1.8, 0)), 0x4080c0, 3.5, 0.2);
+  addCircleCollider(c.pos.x, c.pos.z, 1.2);
+});
+
+// exception book (hidden)
+{
+  const shelf = new THREE.Mesh(
+    new THREE.BoxGeometry(2.2, 2.4, 1),
+    new THREE.MeshStandardMaterial({ color: 0x2a2438, roughness: 0.75, metalness: 0.2, emissive: 0x301828, emissiveIntensity: 0.35 })
+  );
+  shelf.position.copy(WORLD.city.exception);
+  shelf.position.y = 1.2;
+  shelf.castShadow = true;
+  cityGroup.add(shelf);
+  const book = new THREE.Mesh(
+    new THREE.BoxGeometry(1.2, 0.3, 0.85),
+    new THREE.MeshStandardMaterial({ color: 0xc04060, emissive: 0xff4060, emissiveIntensity: 0.7, roughness: 0.5 })
+  );
+  book.position.copy(WORLD.city.exception);
+  book.position.y = 2.15;
+  cityGroup.add(book);
+  addCircleCollider(WORLD.city.exception.x, WORLD.city.exception.z, 1.3);
+}
+
+// operator figure pad
+{
+  const pad = new THREE.Mesh(
+    new THREE.CylinderGeometry(3, 3.4, 0.35, 24),
+    new THREE.MeshStandardMaterial({ color: 0x243450, roughness: 0.55, metalness: 0.4, emissive: 0x183050, emissiveIntensity: 0.35 })
+  );
+  pad.position.copy(WORLD.city.operator);
+  pad.position.y = 0.18;
+  cityGroup.add(pad);
+  const op = makeFigure(0x4a5a78, 0x80c0ff);
+  op.position.copy(WORLD.city.operator);
+  cityGroup.add(op);
+  addCircleCollider(WORLD.city.operator.x, WORLD.city.operator.z, 2.2);
+}
+
+// fire FX
+function addFire(x, z) {
+  const g = new THREE.Group();
+  for (let i = 0; i < 5; i++) {
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.7 + i * 0.15, 2.2 + i * 0.4, 6),
+      new THREE.MeshBasicMaterial({
+        color: i % 2 ? 0xff6020 : 0xffc040,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      })
+    );
+    flame.position.set((Math.random() - 0.5) * 2, 1 + i * 0.2, (Math.random() - 0.5) * 2);
+    g.add(flame);
+  }
+  const light = new THREE.PointLight(0xff5020, 2.2, 18);
+  light.position.y = 2.5;
+  g.add(light);
+  g.position.set(x, 0, z);
+  fireGroup.add(g);
+  return g;
+}
+const fires = [
+  addFire(WORLD.garden.fire1.x, WORLD.garden.fire1.z),
+  addFire(WORLD.garden.fire2.x, WORLD.garden.fire2.z),
+  addFire(WORLD.garden.fire3.x, WORLD.garden.fire3.z),
+];
+// greenhouse fire tint
+{
+  const tint = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 6, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff4020, transparent: true, opacity: 0.18, depthWrite: false })
+  );
+  tint.position.copy(WORLD.garden.greenhouse);
+  tint.position.y = 3;
+  fireGroup.add(tint);
+}
+fireGroup.visible = false;
+
+// weight plates (collectibles)
+const weightPlates = [];
+[WORLD.garden.fire1, WORLD.garden.fire2, WORLD.garden.fire3].forEach((p, i) => {
+  const w = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.7, 0.7, 0.18, 16),
+    new THREE.MeshStandardMaterial({
+      color: 0xe8c47a, emissive: 0xffa040, emissiveIntensity: 0.85,
+      metalness: 0.55, roughness: 0.35,
+    })
+  );
+  w.position.copy(p);
+  w.position.y = 1.2;
+  w.visible = false;
+  scene.add(w);
+  weightPlates.push({ pos: p.clone(), mesh: w, got: false });
+});
+
+// nursery seed mound
+{
+  const mound = new THREE.Mesh(
+    new THREE.SphereGeometry(1.4, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshStandardMaterial({ color: 0x2a2218, roughness: 0.95 })
+  );
+  mound.position.copy(WORLD.garden.nursery);
+  mound.position.y = 0.1;
+  cityGroup.add(mound);
+  const sprout = new THREE.Mesh(
+    new THREE.ConeGeometry(0.25, 1.1, 6),
+    new THREE.MeshStandardMaterial({ color: 0x50d080, emissive: 0x30c060, emissiveIntensity: 0.7 })
+  );
+  sprout.position.copy(WORLD.garden.nursery);
+  sprout.position.y = 1.1;
+  sprout.visible = false;
+  sprout.name = 'sprout';
+  cityGroup.add(sprout);
+  addCircleCollider(WORLD.garden.nursery.x, WORLD.garden.nursery.z, 1.2);
+}
+
+// ============================================================
 // PLAYER
 // ============================================================
 const player = new THREE.Group();
@@ -62715,6 +63021,14 @@ canvas.addEventListener('wheel', (e) => {
 const keys = {};
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  // avoid Space re-clicking focused buttons
+  if (e.code === 'Space' || e.code === 'Enter') {
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'BUTTON' && state.mode === 'dialogue') {
+      e.preventDefault();
+      if (document.activeElement.blur) document.activeElement.blur();
+    }
+  }
   keys[e.code] = true;
   if (e.code === 'Space' || e.code === 'Enter') {
     if (state.mode === 'dialogue') advanceDialogue();
@@ -62799,7 +63113,7 @@ $('dlgSkip').addEventListener('click', () => {
 function setQuest(id) {
   state.quest = id;
   const q = QUESTS[id] || QUESTS[0];
-  const ch = (q.chapter === 1) ? '第一章 · 感知花园' : '第零幕 · 你第一次分心';
+  const ch = q.chapter === 2 ? '第二章 · 符号城邦' : (q.chapter === 1 ? '第一章 · 感知花园' : '第零幕 · 你第一次分心');
   $('qChapter').textContent = ch;
   $('qTitle').textContent = q.title;
   $('qObj').textContent = q.obj;
@@ -62832,6 +63146,13 @@ const QUEST_TARGETS = {
   9: { pos: () => WORLD.garden.flowerCenter, name: '可分花田', sub: '划一条线', short: '花田中央' },
   10: { pos: () => WORLD.garden.xorPlot, name: '异或荆棘', sub: '线性不可分', short: '异或荆棘' },
   11: { pos: () => WORLD.garden.greenhouse, name: '露丝温室', sub: '夏日之后', short: '温室' },
+  12: { pos: () => WORLD.garden.fire1, name: '温室大火', sub: '抢救权重盘', short: '火场' },
+  13: { pos: () => WORLD.garden.nursery, name: '残差苗床', sub: '埋下种子', short: '苗床' },
+  14: { pos: () => WORLD.city.gate, name: '符号城邦', sub: '第二章', short: '城邦大门' },
+  15: { pos: () => WORLD.city.codex, name: '规则法典', sub: 'IF-THEN', short: '法典' },
+  16: { pos: () => WORLD.city.crystal1, name: '审判水晶', sub: '规则洗礼', short: '水晶阵' },
+  17: { pos: () => WORLD.city.exception, name: '例外之书', sub: '禁止阅读', short: '例外卷宗' },
+  18: { pos: () => WORLD.city.operator, name: '算符', sub: '规则之外', short: '算符' },
 };
 
 const WORLD_LABELS = [
@@ -62844,6 +63165,9 @@ const WORLD_LABELS = [
   { key: 'flower', pos: () => WORLD.garden.flowerCenter, title: '可分花田', sub: 'LINEAR FIELD' },
   { key: 'xor', pos: () => WORLD.garden.xorPlot, title: '异或荆棘', sub: 'XOR THORNS' },
   { key: 'gh', pos: () => WORLD.garden.greenhouse, title: '露丝温室', sub: 'ROSE GREENHOUSE' },
+  { key: 'fire', pos: () => WORLD.garden.fire1, title: '温室大火', sub: 'FIRE' },
+  { key: 'city', pos: () => WORLD.city.gate, title: '符号城邦', sub: 'SYMBOL CITY' },
+  { key: 'op', pos: () => WORLD.city.operator, title: '算符', sub: 'OPERATOR' },
 ];
 
 function updateGoalMarker() {
@@ -63171,6 +63495,10 @@ $('btnStart').addEventListener('click', async () => {
   state.phase = 'play';
   setQuest(0);
   updatePlayerUI();
+  {
+    const b = document.getElementById('btnStart');
+    if (b) { b.disabled = true; b.style.pointerEvents = 'none'; b.blur(); }
+  }
   showToast('算理荒原', '纸带海 · 未登记进程');
   showLocation('算 理 荒 原', 'PAPER-TAPE WILDERNESS');
 });
@@ -63206,6 +63534,10 @@ async function showChapterBanner(num, title, sub) {
 }
 
 function startChapter1() {
+  {
+    const b = document.getElementById('btnStart');
+    if (b) { b.disabled = true; b.style.pointerEvents = 'none'; b.blur(); }
+  }
   state.flags.ch1Opened = true;
   state.flags.ch1Started = true;
   state.phase = 'play';
@@ -63354,20 +63686,178 @@ const gardenInteract = [
         { name: '注', text: '我也录下来了。以后卖周边用。' },
         { name: '露丝', text: '（笑，身影开始发亮）去吧。花田外面，还有一座会把一切写成规则的城。' },
       ], () => {
-        state.phase = 'complete';
-        completeEl.classList.add('show');
-        $('completeName').textContent = state.name;
-        $('completeLines').innerHTML = `
-          <b style="color:var(--gold);letter-spacing:.3em">第一章 · 开场 · 完</b><br/><br/>
-          你学会了「一条线」，<br/>
-          也看见了「一条线分不开的花」。<br/><br/>
-          下一站：<span style="color:var(--gold)">符号城邦</span><br/>
-          <span style="opacity:.75">（完整章节 · 温室大火 · 将随后更新）</span>
-        `;
+        // Chapter 1 climax: fire
+        fireGroup.visible = true;
+        weightPlates.forEach((w) => { w.mesh.visible = true; });
+        state.flags.fireStarted = true;
+        state.flags.plates = 0;
+        setQuest(12);
+        showDialogue([
+          { name: '系统女声', text: '警告：研究资产回收。乐观指数过高，判定为噪声。' },
+          { name: '露丝', text: '不！你们可以删掉经费——但不能删掉它们还没开的花！' },
+          { name: '注', text: '火！温室在烧！快抢【权重盘】——它们在红光里发光！' },
+        ], () => {
+          showToast('温室大火', '收集 3 枚发光的权重盘');
+        });
       });
     },
   },
 ];
+
+// weight plates
+weightPlates.forEach((wp, idx) => {
+  interactables.push({
+    id: 'plate' + idx,
+    pos: wp.pos,
+    r: 3.5,
+    label: '拾取权重盘',
+    active: () => state.quest === 12 && !wp.got,
+    onInteract: () => {
+      wp.got = true;
+      wp.mesh.visible = false;
+      state.flags.plates = (state.flags.plates || 0) + 1;
+      showToast('权重盘', `已收集 ${state.flags.plates} / 3`);
+      if (state.flags.plates >= 3) {
+        fireGroup.visible = false;
+        showDialogue([
+          { name: '露丝', text: '很好。你把「学」的可能，从火里带出来了。' },
+          { name: state.name, text: '……这里好烫。你呢？' },
+          { name: '露丝', text: '我去当冬天的火种。你去种下一棵会开很多层的树。' },
+        ], () => {
+          setQuest(13);
+          showToast('火后的苗床', '去温室后方埋下种子');
+        });
+      } else {
+        showDialogue([{ name: '注', text: `还差 ${3 - state.flags.plates} 枚！` }]);
+      }
+    },
+  });
+});
+
+// nursery
+interactables.push({
+  id: 'nursery',
+  pos: WORLD.garden.nursery,
+  r: 3.5,
+  label: '埋下种子',
+  active: () => state.quest === 13,
+  onInteract: () => {
+    const sprout = cityGroup.getObjectByName('sprout');
+    if (sprout) sprout.visible = true;
+    showDialogue([
+      { name: state.name, text: '一层线不够，就两层。两层不够，就很多层。' },
+      { name: state.name, text: '而且每一层，都该保留「一开始的自己」。' },
+      { name: '注', text: '这叫什么？' },
+      { name: state.name, text: '还没名字。我只知道：不能让深度吞掉来处。' },
+      { name: '注', text: '前面有座水晶城……规则在那里像宝石一样发光。' },
+    ], () => {
+      setQuest(14);
+      showToast('通往城邦', '第二章 · 符号城邦');
+      showChapterBanner('CHAPTER 02', '符 号 城 邦', '知识可以被写下来吗？');
+    });
+  },
+});
+
+// city codex
+interactables.push({
+  id: 'codex',
+  pos: WORLD.city.codex,
+  r: 3.5,
+  label: '阅读规则法典',
+  active: () => state.quest === 14 || state.quest === 15,
+  onInteract: () => {
+    showDialogue([
+      { name: '算符', text: '欢迎来到符号城邦。在这里，万物皆可 if-then。' },
+      { name: '算符', text: '若下雨，则带伞。若超时，则拒绝。若异常，则归档为 0。' },
+      { name: state.name, text: '……那「发抖」呢？它不在词表里。' },
+      { name: '算符', text: '不在词表里的，就不存在。这是秩序的代价。' },
+    ], () => {
+      setQuest(16);
+      showToast('if-then 的洗礼', '点亮三枚审判水晶');
+    });
+  },
+});
+
+// crystals
+crystals.forEach((c, i) => {
+  interactables.push({
+    id: 'crystal' + i,
+    pos: c.pos,
+    r: 3.2,
+    label: '激活审判水晶',
+    active: () => state.quest === 16 && !c.lit,
+    onInteract: () => {
+      c.lit = true;
+      if (c.mesh) {
+        c.mesh.material.color.setHex(0x80e0ff);
+        c.mesh.material.emissive.setHex(0x40b0ff);
+        c.mesh.material.emissiveIntensity = 1.2;
+      }
+      const lit = crystals.filter((x) => x.lit).length;
+      showToast('规则激活', `${lit} / 3`);
+      if (lit >= 3) {
+        showDialogue([
+          { name: '算符', text: '规则已写入。城市会因此更稳定。' },
+          { name: state.name, text: '也会因此……更硬。' },
+          { name: '注', text: '嘘，角落里有一本红色的书……标签写着「例外」。' },
+        ], () => {
+          setQuest(17);
+          showToast('例外卷宗', '城邦东侧书架');
+        });
+      } else {
+        showDialogue([{ name: '算符', text: `还有 ${3 - lit} 条规则未写入。` }]);
+      }
+    },
+  });
+});
+
+// exception book
+interactables.push({
+  id: 'exception',
+  pos: WORLD.city.exception,
+  r: 3.2,
+  label: '阅读例外之书',
+  active: () => state.quest === 17,
+  onInteract: () => {
+    showDialogue([
+      { name: '例外之书', text: '「病假条没有盖章，但他的手在抖。」' },
+      { name: '例外之书', text: '「规则说拒绝。人类说：先坐下喝口水。」' },
+      { name: state.name, text: '原来城市里，还偷偷留着没被写完的句子。' },
+      { name: '注', text: '偏见主教会讨厌这本书。所以我有点喜欢它。' },
+    ], () => {
+      setQuest(18);
+      showToast('写不进规则的人', '去找算符');
+    });
+  },
+});
+
+// operator final
+interactables.push({
+  id: 'operator',
+  pos: WORLD.city.operator,
+  r: 3.8,
+  label: '与算符交谈',
+  active: () => state.quest === 18,
+  onInteract: () => {
+    showDialogue([
+      { name: '算符', text: '你看见了例外。很好。' },
+      { name: '算符', text: '我曾以为：把一切写清，就没有痛苦。' },
+      { name: state.name, text: '可你写得越清，「人」就越容易被夹在页缝里。' },
+      { name: '算符', text: '……所以我开始怀疑。怀疑，是不是也是一种运算。' },
+      { name: '注', text: '第二章·开场，结束。后面还有会做梦的网络、会说谎的镜子……' },
+    ], () => {
+      state.phase = 'complete';
+      completeEl.classList.add('show');
+      $('completeName').textContent = state.name;
+      $('completeLines').innerHTML = `
+        <b style="color:var(--gold);letter-spacing:.3em">第二章 · 开场 · 完</b><br/><br/>
+        你学会了「规则」，<br/>
+        也看见了「规则写不下的人」。<br/><br/>
+        下一站：<span style="color:var(--gold)">寒冬裂谷 / 深度之种</span>
+      `;
+    });
+  },
+});
 
 // memory stones
 memoryStones.forEach((st, idx) => {
@@ -63474,6 +63964,9 @@ function drawMinimap() {
       4: WORLD.broadcast, 5: WORLD.noteSpawn, 6: WORLD.gates[1].pos,
       7: WORLD.garden.spawn, 8: WORLD.garden.ruth, 9: WORLD.garden.flowerCenter,
       10: WORLD.garden.xorPlot, 11: WORLD.garden.greenhouse,
+      12: WORLD.garden.fire1, 13: WORLD.garden.nursery, 14: WORLD.city.gate,
+      15: WORLD.city.codex, 16: WORLD.city.crystal1, 17: WORLD.city.exception,
+      18: WORLD.city.operator,
     };
     const t = targets[state.quest] || WORLD.letter;
     const [ox, oy] = toMap(t.x, t.z);
@@ -63709,7 +64202,7 @@ function updateMovement(dt) {
   // bounds — include Chapter 1 garden (extends to z ≈ -200)
   const B = 120;
   player.position.x = clamp(player.position.x, -B, B);
-  player.position.z = clamp(player.position.z, -B - 90, B); // z from -210 to +120
+  player.position.z = clamp(player.position.z, -B - 160, B); // z from -280 to +120
 
   // face movement
   if (vel.lengthSq() > 0.2) {
@@ -63815,6 +64308,22 @@ function animate() {
 
   // dust drift
   dust.rotation.y = t * 0.015;
+  if (fireGroup.visible) {
+    fires.forEach((f, i) => {
+      f.children.forEach((c, j) => {
+        if (c.isMesh) {
+          c.scale.y = 1 + Math.sin(t * 6 + i + j) * 0.18;
+          c.scale.x = 1 + Math.sin(t * 5 + j) * 0.08;
+        }
+      });
+    });
+    weightPlates.forEach((w, i) => {
+      if (w.mesh.visible) {
+        w.mesh.rotation.y = t * 1.8;
+        w.mesh.position.y = 1.2 + Math.sin(t * 3 + i) * 0.15;
+      }
+    });
+  }
   {
     const ff = scene.getObjectByName('fireflies');
     if (ff) {
@@ -63845,6 +64354,7 @@ function animate() {
       { x: 0, z: -85, r: 18, name: '三门广场', sub: 'THREE GATES' },
       { x: 0, z: -150, r: 22, name: '感知花园', sub: 'PERCEPTION GARDEN' },
       { x: -18, z: -168, r: 12, name: '异或荆棘', sub: 'XOR THORNS' },
+      { x: 0, z: -240, r: 22, name: '符号城邦', sub: 'SYMBOL CITY' },
     ];
     let near = null, nd = 1e9;
     for (const a of areas) {
