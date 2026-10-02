@@ -59844,8 +59844,8 @@ const QUESTS = [
   },
   {
     id: 11, title: '夏日之后', chapter: 1,
-    obj: '在温室前听完露丝的话，记住「错误不可耻」。',
-    tip: '走向温室光柱，按 E',
+    obj: '在温室前按 E 听完露丝——之后会起火。',
+    tip: 'E 交互 · 然后收集 3 枚权重盘',
     progress: 100,
   },
   // ---- Chapter 1 climax ----
@@ -63520,6 +63520,27 @@ $('btnCh1').addEventListener('click', () => {
   else {
     state.phase = 'play';
     hudEl.classList.add('on');
+    if (!state.flags.fireStarted) {
+      setQuest(11);
+      player.position.set(WORLD.garden.greenhouse.x, 0, WORLD.garden.greenhouse.z + 5);
+      showToast('继续第一章', '在温室前按 E，触发大火');
+    } else if ((state.flags.plates || 0) < 3) {
+      setQuest(12);
+      showToast('继续第一章', '收集火场里的 3 枚权重盘');
+    } else if (state.quest < 13) {
+      setQuest(13);
+      showToast('继续第一章', '去残差苗床埋种子');
+    } else if (state.quest < 15) {
+      setQuest(14);
+      player.position.set(WORLD.city.gate.x, 0, WORLD.city.gate.z + 8);
+      showToast('继续第二章', '前往符号城邦 · 阅读法典');
+    } else if (state.quest < 16) {
+      setQuest(15);
+      player.position.set(WORLD.city.codex.x, 0, WORLD.city.codex.z + 5);
+      showToast('继续第二章', '阅读规则法典');
+    } else {
+      showToast('继续冒险', '跟随金色光点');
+    }
   }
 });
 
