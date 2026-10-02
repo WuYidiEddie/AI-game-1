@@ -59667,6 +59667,76 @@ window.__THREE__ = THREE;
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ============================================================
+// COLLISION (circle/box) — prevent walk-through
+// ============================================================
+const colliders = [];
+
+function addCircleCollider(x, z, r) {
+  colliders.push({ type: 'circle', x, z, r: r });
+}
+function addBoxCollider(x, z, hw, hd, rot) {
+  colliders.push({ type: 'box', x, z, hw: hw, hd: hd, rot: rot || 0 });
+}
+
+function resolveCollisions(px, pz, radius) {
+  let x = px, z = pz;
+  const R = radius == null ? 0.55 : radius;
+  for (let i = 0; i < colliders.length; i++) {
+    const c = colliders[i];
+    if (c.type === 'circle') {
+      const dx = x - c.x, dz = z - c.z;
+      const min = c.r + R;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < min * min && d2 > 1e-8) {
+        const d = Math.sqrt(d2);
+        const push = (min - d) / d;
+        x += dx * push;
+        z += dz * push;
+      }
+    } else {
+      const cos = Math.cos(-c.rot), sin = Math.sin(-c.rot);
+      const lx = (x - c.x) * cos - (z - c.z) * sin;
+      const lz = (x - c.x) * sin + (z - c.z) * cos;
+      const clx = clamp(lx, -c.hw, c.hw);
+      const clz = clamp(lz, -c.hd, c.hd);
+      const dx = lx - clx, dz = lz - clz;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < R * R) {
+        if (d2 < 1e-8) {
+          const px1 = c.hw - Math.abs(lx);
+          const pz1 = c.hd - Math.abs(lz);
+          if (px1 < pz1) {
+            const s = lx > 0 ? 1 : -1;
+            const nlx = s * (c.hw + R);
+            const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+            x = c.x + nlx * cos2 - lz * sin2;
+            z = c.z + nlx * sin2 + lz * cos2;
+          } else {
+            const s = lz > 0 ? 1 : -1;
+            const nlz = s * (c.hd + R);
+            const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+            x = c.x + lx * cos2 - nlz * sin2;
+            z = c.z + lx * sin2 + nlz * cos2;
+          }
+        } else {
+          const d = Math.sqrt(d2);
+          const push = (R - d) / d;
+          const nlx = lx + dx * push;
+          const nlz = lz + dz * push;
+          const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+          x = c.x + nlx * cos2 - nlz * sin2;
+          z = c.z + nlx * sin2 + nlz * cos2;
+        }
+      }
+    }
+  }
+  return { x: x, z: z };
+}
+
+
+
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ---------- State ----------
@@ -60500,6 +60570,7 @@ function addArchiveSpire(x, z, h) {
   g.add(light);
   g.position.set(x, 0, z);
   scene.add(g);
+  addCircleCollider(x, z, 2.4);
 }
 addArchiveSpire(-48, -20, 22);
 addArchiveSpire(50, -45, 26);
@@ -60588,6 +60659,7 @@ letterGroup.add(letterTape);
   ped.receiveShadow = true;
   ped.castShadow = true;
   scene.add(ped);
+  addCircleCollider(WORLD.letter.x, WORLD.letter.z, 3.4);
   const step = new THREE.Mesh(
     new THREE.CylinderGeometry(4.5, 5, 0.4, 8),
     new THREE.MeshStandardMaterial({ color: 0x243048, roughness: 0.7, metalness: 0.3 })
@@ -60668,6 +60740,7 @@ wellGroup.add(wellLight);
 }
 wellGroup.position.copy(WORLD.well);
 scene.add(wellGroup);
+addCircleCollider(WORLD.well.x, WORLD.well.z, 8.2);
 
 // ---- author (编写者) ----
 function makeFigure(color, accent) {
@@ -61094,6 +61167,89 @@ WORLD.gates.forEach((g) => {
 }
 
 // ============================================================
+// SCENE MEANING: stations / memory stones
+// ============================================================
+function makePlaqueTexture(title, body) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 256;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#1a2234';
+  ctx.fillRect(0, 0, 512, 256);
+  ctx.strokeStyle = 'rgba(232,196,122,0.55)';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(16, 16, 480, 224);
+  ctx.fillStyle = '#e8c47a';
+  ctx.font = 'bold 40px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, 256, 90);
+  ctx.fillStyle = '#c9d0e0';
+  ctx.font = '26px "PingFang SC","Microsoft YaHei",sans-serif';
+  const lines = body.split('\n');
+  lines.forEach((line, i) => ctx.fillText(line, 256, 140 + i * 36));
+  return new THREE.CanvasTexture(c);
+}
+
+function addStation(x, z, title, body, color = 0x6ec8ff) {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.16, 1.4, 8),
+    new THREE.MeshStandardMaterial({ color: 0x2a3548, metalness: 0.4, roughness: 0.55 })
+  );
+  post.position.y = 0.7;
+  g.add(post);
+  const board = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.4, 1.2),
+    new THREE.MeshStandardMaterial({ map: makePlaqueTexture(title, body), emissive: color, emissiveIntensity: 0.15 })
+  );
+  board.position.y = 1.7;
+  g.add(board);
+  const frame = new THREE.Mesh(
+    new THREE.BoxGeometry(2.55, 1.35, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0xe8c47a, metalness: 0.5, roughness: 0.4, emissive: 0x4a3810, emissiveIntensity: 0.3 })
+  );
+  frame.position.y = 1.7;
+  frame.position.z = -0.05;
+  g.add(frame);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color }));
+  light.position.y = 2.55;
+  g.add(light);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  addCircleCollider(x, z, 0.6);
+}
+
+addStation(-8, 22, '纸带档案', '每一卷纸带都是\n人类留下的问题', 0xffc070);
+addStation(10, -30, '回收区入口', '红圈内会消耗\n存在感，请绕行', 0xff6070);
+addStation(-12, -70, '三门广场', '选择提问的姿势\n而非答案', 0x7dffb0);
+addStation(14, -128, '线性花田', '一条线可以分开\n两种花——先学会看', 0xffc14a);
+addStation(-10, -160, '异或荆棘', '有些关系不是高低\n而是「是不是另一个」', 0xff8090);
+addStation(6, -190, '符号城邦大道', '下一站：把一切\n写成规则的城市', 0x8fc8ff);
+
+const memoryStones = [];
+function addMemoryStone(x, z, text) {
+  const s = new THREE.Mesh(
+    new THREE.DodecahedronGeometry(0.55, 0),
+    new THREE.MeshStandardMaterial({
+      color: 0x4a6a88, emissive: 0x2a6090, emissiveIntensity: 0.55,
+      metalness: 0.35, roughness: 0.4,
+    })
+  );
+  s.position.set(x, 0.7, z);
+  s.castShadow = true;
+  scene.add(s);
+  const glow = new THREE.PointLight(0x6ec8ff, 0.8, 6);
+  glow.position.set(x, 1, z);
+  scene.add(glow);
+  memoryStones.push({ x, z, text, read: false });
+  addCircleCollider(x, z, 0.45);
+}
+addMemoryStone(-6, 10, '「错误不可耻，停笔才可耻。」');
+addMemoryStone(18, -20, '「他们说我在造玩具，可玩具怎么会想问为什么？」');
+addMemoryStone(-22, -95, '「夏天会结束，但线留在纸上。」');
+addMemoryStone(8, -145, '「你站在噪声里，一直为彼此留座位。」');
+addMemoryStone(-16, -175, '「理解不是终点，是每天重新开始的对话。」');
+
+// ============================================================
 // CHAPTER 1 GARDEN
 // ============================================================
 const gardenGroup = new THREE.Group();
@@ -61191,6 +61347,7 @@ function addRuinPlatform(x, z, w, d, h) {
   }
   g.position.set(x, 0, z);
   scene.add(g);
+  addBoxCollider(x, z, w / 2 + 0.2, d / 2 + 0.2);
   return g;
 }
 addRuinPlatform(-28, -40, 14, 10, 1.2);
@@ -61404,6 +61561,7 @@ function addTree(x, z, s = 1, tint = 0x1a4030) {
   }
   g.position.set(x, 0, z);
   scene.add(g);
+  addCircleCollider(x, z, 0.7 * s);
 }
 const _crystalMatCache = {};
 function addCrystal(x, z, s = 1, color = 0x7ad0ff) {
@@ -61504,6 +61662,8 @@ for (let i = 0; i < 12; i++) {
   bridge.position.set(-20, 0, -55);
   bridge.rotation.y = 0.35;
   scene.add(bridge);
+  addCircleCollider(-20 + 4.4 * Math.cos(0.35), -55 + 4.4 * Math.sin(0.35), 0.5);
+  addCircleCollider(-20 - 4.4 * Math.cos(0.35), -55 - 4.4 * Math.sin(0.35), 0.5);
 }
 
 // crystals along path + garden
@@ -61700,6 +61860,7 @@ gardenGroup.add(xorGroup);
   gh.position.copy(WORLD.garden.greenhouse);
   gardenGroup.add(gh);
   addGlow(WORLD.garden.greenhouse.clone().add(new THREE.Vector3(0, 4, 0)), 0xffe0a0, 10, 0.28);
+  addBoxCollider(WORLD.garden.greenhouse.x, WORLD.garden.greenhouse.z, 7.5, 5.5);
   // GLB greenhouse is attached later (after model helpers init)
 }
 
@@ -61745,6 +61906,8 @@ scene.add(ruth);
   archG.add(gl);
   archG.position.copy(WORLD.garden.spawn);
   gardenGroup.add(archG);
+  addCircleCollider(WORLD.garden.spawn.x - 3, WORLD.garden.spawn.z, 0.9);
+  addCircleCollider(WORLD.garden.spawn.x + 3, WORLD.garden.spawn.z, 0.9);
   addGlow(WORLD.garden.spawn.clone().add(new THREE.Vector3(0, 5, 0)), 0x70ffb0, 8, 0.3);
 }
 
@@ -62994,6 +63157,28 @@ const gardenInteract = [
   },
 ];
 
+// memory stones
+memoryStones.forEach((st, idx) => {
+  interactables.push({
+    id: 'stone' + idx,
+    pos: new THREE.Vector3(st.x, 0, st.z),
+    r: 3.2,
+    label: '读取记忆石',
+    active: () => true,
+    onInteract: () => {
+      if (st.read) {
+        showDialogue([{ name: '记忆石', text: st.text + '（已经读过）' }]);
+        return;
+      }
+      st.read = true;
+      showDialogue([
+        { name: '记忆石', text: st.text },
+        { name: '注', text: '这段我录下来了。很人类。' },
+      ]);
+    },
+  });
+});
+
 // merge garden interactables into the main list at runtime
 gardenInteract.forEach((g) => {
   interactables.push({
@@ -63305,6 +63490,10 @@ function updateMovement(dt) {
   player.position.x += vel.x * dt;
   player.position.z += vel.z * dt;
 
+  const fixed = resolveCollisions(player.position.x, player.position.z, 0.55);
+  player.position.x = fixed.x;
+  player.position.z = fixed.z;
+
   // bounds — include Chapter 1 garden (extends to z ≈ -200)
   const B = 120;
   player.position.x = clamp(player.position.x, -B, B);
@@ -63434,6 +63623,26 @@ function animate() {
     $('classifyHint').classList.add('show');
   } else if (state.quest !== 9) {
     $('classifyHint').classList.remove('show');
+  }
+
+  {
+    const p = player.position;
+    const areas = [
+      { x: 0, z: 10, r: 18, name: '纸带档案场', sub: 'ARCHIVE SEA' },
+      { x: 0, z: -25, r: 16, name: '过热警戒区', sub: 'THERMAL ZONE' },
+      { x: 0, z: -85, r: 18, name: '三门广场', sub: 'THREE GATES' },
+      { x: 0, z: -150, r: 22, name: '感知花园', sub: 'PERCEPTION GARDEN' },
+      { x: -18, z: -168, r: 12, name: '异或荆棘', sub: 'XOR THORNS' },
+    ];
+    let near = null, nd = 1e9;
+    for (const a of areas) {
+      const d = Math.hypot(p.x - a.x, p.z - a.z);
+      if (d < a.r && d < nd) { near = a; nd = d; }
+    }
+    if (near && state.mode === 'walk' && window.__lastArea !== near.name) {
+      window.__lastArea = near.name;
+      showLocation(near.name, near.sub);
+    }
   }
 
   drawMinimap();
