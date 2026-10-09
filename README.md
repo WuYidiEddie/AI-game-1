@@ -23,7 +23,7 @@
 
 **打开方式**
 
-1. 下载或打开 [`game/chapter0.html`](game/chapter0.html)（单文件，内置 Three.js，无需构建、无外网依赖）
+1. 下载或打开 [`game/shijie.html`](game/shijie.html)（单文件，内置 Three.js，无需构建、无外网依赖）
 2. 建议用 Chrome / Edge
 3. 模型从 `game/models/*.glb` 相对加载；用本地静态服务打开最稳（直接双击也能玩，模型会缺省降级）
 
