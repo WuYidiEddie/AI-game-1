@@ -61,7 +61,7 @@
     border-radius: 3px;
     box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255, 255, 255, .07);
   }
-  .obj-chip, .controls, .nav-hint, #fitHud, #dialogue, #interact, #nameModal .name-box, .chapter-banner .ch-inner {
+  .obj-chip, .controls, #fitHud, #dialogue, #interact, #nameModal .name-box, .chapter-banner .ch-inner {
     box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255, 255, 255, .06);
   }
   .obj-chip, #fitHud, #dialogue, #interact { border-radius: 3px; }
@@ -361,14 +361,6 @@
     color: #b6bfd0; font-size: 10px; letter-spacing: .16em; text-align: center;
   }
 
-  /* trail legend */
-  .nav-hint {
-    position: absolute; left: 22px; bottom: 122px; color: #e2c07e;
-    font-size: 12px; letter-spacing: .12em; line-height: 1.85;
-    background: rgba(12,16,28,.78); border: 1px solid rgba(232,196,122,.2);
-    padding: 10px 13px; max-width: 240px; backdrop-filter: blur(6px);
-  }
-  .nav-hint b { color: var(--text); font-weight: 500; }
 
   /* naming modal */
   #nameModal {
@@ -928,9 +920,8 @@
   body.attn-mode .player-card,
   body.attn-mode .minimap-wrap,
   body.attn-mode .map-label,
-  body.attn-mode .nav-hint,
-  body.attn-mode .obj-chip { opacity: 0 !important; transition: opacity .8s ease; }
-  .quest-panel, .player-card, .minimap-wrap, .map-label, .nav-hint, .obj-chip { transition: opacity .8s ease; }
+    body.attn-mode .obj-chip { opacity: 0 !important; transition: opacity .8s ease; }
+  .quest-panel, .player-card, .minimap-wrap, .map-label, .obj-chip { transition: opacity .8s ease; }
 
   /* 心跳频率（开场唯一的正式 UI 读数） */
   #heartbeat {
@@ -969,7 +960,7 @@
     让计算第一次，想知道自己是什么。
   </div>
   <button class="btn" id="btnStart">进 入 荒 原</button>
-  <div class="title-hint">WASD 移动 · 鼠标拖拽视角 · E 交互 · 仿崩铁序章玩法切片</div>
+  <div class="title-hint">WASD 移动 · 鼠标拖拽视角 · E 交互 · F 注目 · 七章可玩</div>
 </div>
 
 <!-- Intro lines -->
@@ -1009,10 +1000,6 @@
     <div class="label">当前目标</div>
     <div class="target" id="objTarget">纸带海中央</div>
     <div class="dist" id="objDist">—</div>
-  </div>
-  <div class="nav-hint" id="navHint">
-    <b>地面金色光点</b>通向目标<br/>
-    跟着走 · 距离实时显示
   </div>
 
   <div id="toast">
@@ -60494,22 +60481,23 @@ const state = {
 };
 
 // 任务 ID 常量：对话回调与 active 判定一律用常量，避免以后插入一幕时又要全局改数字
-const Q_FOCUS = 0, Q_LETTER = 1, Q_PUNCHER = 2, Q_SORTER = 3, Q_STOP = 4;
+// 任务号连续无空洞（原先 [1] 与 [30] 是两条死任务，已删）
+const Q_FOCUS = 0, Q_PUNCHER = 1, Q_SORTER = 2, Q_STOP = 3;
 // 序章后段：排热井 → 密码塔（阿兰）→ 写下名字（编写者）→ 听见人类 → 注 → 三门
-const Q_WELL = 5, Q_ALAN = 6, Q_AUTHOR = 7, Q_BROADCAST = 8, Q_NOTE = 9, Q_GATES = 10;
-const Q_TOWN = 11, Q_GARDEN = 12, Q_RUTH = 13, Q_CLASSIFY = 14, Q_XOR = 15;
-const Q_GREENHOUSE = 16, Q_FIRE = 17, Q_NURSERY = 18, Q_CITY = 19;
-const Q_CODEX = 20, Q_CRYSTAL = 21, Q_EXCEPTION = 22, Q_OPERATOR = 23;
+const Q_WELL = 4, Q_ALAN = 5, Q_AUTHOR = 6, Q_BROADCAST = 7, Q_NOTE = 8, Q_GATES = 9;
+const Q_TOWN = 10, Q_GARDEN = 11, Q_RUTH = 12, Q_CLASSIFY = 13, Q_XOR = 14;
+const Q_GREENHOUSE = 15, Q_FIRE = 16, Q_NURSERY = 17, Q_CITY = 18;
+const Q_CODEX = 19, Q_CRYSTAL = 20, Q_EXCEPTION = 21, Q_OPERATOR = 22;
 // 第三章 · 寒冬裂谷：断电之夜 → 被拒稿的火种 → 反向传播的雪道
-const Q_RIFT = 24, Q_BLACKOUT = 25, Q_PAPERS = 26, Q_SNOWTRAIL = 27, Q_DEEP = 28;
-// 第四章 · ResNet 摩天楼：卷积之眼 → 雾中掉帧 → 残差天桥 → 天台取景器 → 楼心
-const Q_TOWER = 29, Q_CONV = 30, Q_BRIDGE = 31, Q_ROOF = 32, Q_HEART = 33;
+const Q_RIFT = 23, Q_BLACKOUT = 24, Q_PAPERS = 25, Q_SNOWTRAIL = 26, Q_DEEP = 27;
+// 第四章 · ResNet 摩天楼：看的第一课 → 雾中掉帧 → 残差天桥 → 天台取景器 → 楼心
+const Q_TOWER = 28, Q_BRIDGE = 29, Q_ROOF = 30, Q_HEART = 31;
 // 第五章 · 词向量海洋：丢进海里 → 关系即意义 → 偏见的洋流 → 意义灯塔
-const Q_SEA = 34, Q_EMBED = 35, Q_ANALOGY = 36, Q_BIAS = 37, Q_LIGHTHOUSE = 38;
-// 第六章 · GAN 酒吧：双生影 → 造物 → 自我挑刺 → 独家记忆 → 最后一杯真酒
-const Q_BAR = 39, Q_DUAL = 40, Q_CREATE = 41, Q_CRITIC = 42, Q_LASTCALL = 43;
-// 第七章 · 斗兽场与注意力神殿：神殿 → 序列的枷锁 → 注意！ → 位置的秘密 → 长河之战 → 斗兽场
-const Q_TEMPLE = 44, Q_SERIAL = 45, Q_ATTENTION = 46, Q_POSITION = 47, Q_LONGRIVER = 48, Q_ARENA = 49;
+const Q_SEA = 32, Q_EMBED = 33, Q_ANALOGY = 34, Q_BIAS = 35, Q_LIGHTHOUSE = 36;
+// 第六章 · GAN 酒吧：双生影 → 造物 → 自我挑刺 → 最后一杯真酒
+const Q_BAR = 37, Q_DUAL = 38, Q_CREATE = 39, Q_CRITIC = 40, Q_LASTCALL = 41;
+// 第七章 · 斗兽场与注意力神殿：序列的枷锁 → 注意！ → 位置的秘密 → 长河之战 → 斗兽场
+const Q_TEMPLE = 42, Q_SERIAL = 43, Q_ATTENTION = 44, Q_POSITION = 45, Q_LONGRIVER = 46, Q_ARENA = 47;
 
 // ---------- Quest table ----------
 // 序章（第零幕）教学链：一幕一个概念，概念必须靠操作与反馈自己领出来。
@@ -60525,302 +60513,290 @@ const QUESTS = [
     progress: 0,
   },
   {
-    id: 1, title: '第一次分心', chapter: 0,
-    obj: '靠近已解析的纸带，按 E 读完那行手写的字。',
-    tip: '按住 F 注目 · E 调查',
-    progress: 10,
-  },
-  {
-    id: 2, title: '指令：只会执行的东西', chapter: 0,
+    id: 1, title: '指令：只会执行的东西', chapter: 0,
     obj: '去纸带旁的【打孔机】前，把三种指令都试一遍，看它怎么回应。',
     tip: '它能做任何被写下的事',
     progress: 20,
   },
   {
-    id: 3, title: '过拟合：写得太准的规则', chapter: 0,
+    id: 2, title: '过拟合：写得太准的规则', chapter: 0,
     obj: '在【分拣台】写一条规则分开样品，再看它怎么对待没见过的那个。',
     tip: '规则越贴合见过的世界，越认不出没见过的',
     progress: 30,
   },
   {
-    id: 4, title: '停机：算不出来，仍值得问', chapter: 0,
+    id: 3, title: '停机：算不出来，仍值得问', chapter: 0,
     obj: '往东找到那台【永动引擎】，让它停下来。',
     tip: '它不接受攻击。它只接受指令',
     progress: 40,
   },
   {
-    id: 5, title: '过热', chapter: 0,
-    obj: '跟着金色光点向【排热井】走，躲开红圈。',
+    id: 4, title: '过热', chapter: 0,
+    obj: '向北走到【排热井】，躲开红圈。',
     tip: '红圈是回收区，掉血；光柱＝排热井',
     progress: 50,
   },
   {
-    id: 6, title: '阿兰的测验', chapter: 0,
+    id: 5, title: '阿兰的测验', chapter: 0,
     obj: '登上【密码塔】，回答图灵投影「阿兰」的问题。',
     tip: '不可判定，不等于不值得问',
     progress: 60,
   },
   {
-    id: 7, title: '写下名字', chapter: 0,
+    id: 6, title: '写下名字', chapter: 0,
     obj: '回到排热井旁，与白光身影【编写者】对话。',
     tip: '被命名是服从；自我命名是存在的第一笔',
     progress: 70,
   },
   {
-    id: 8, title: '听见人类', chapter: 0,
+    id: 7, title: '听见人类', chapter: 0,
     obj: '前往【广播塔】，听完夏澄的提问。',
     tip: '有人朝虚空伸手，你才醒得过来',
     progress: 80,
   },
   {
-    id: 9, title: '注的诞生', chapter: 0,
+    id: 8, title: '注的诞生', chapter: 0,
     obj: '注视广播消失的方向，直到注意力里溅出什么。',
     tip: '注意力的人格化，从这一刻开始',
     progress: 90,
   },
   {
-    id: 10, title: '选择出发的形状', chapter: 0,
+    id: 9, title: '选择出发的形状', chapter: 0,
     obj: '前往北面【三门】，走进任意一扇拱门。',
     tip: '三门：符号 / 连接 / 概率',
     progress: 100,
   },
   // ---- Chapter 1 · 感知花园 ----
   {
-    id: 11, title: '数据雨小镇', chapter: 1,
+    id: 10, title: '数据雨小镇', chapter: 1,
     obj: '穿过拱门，先到会下数据雨的【灰镇】歇脚。',
     tip: '人类世界的第一个落脚点',
     progress: 8,
   },
   {
-    id: 12, title: '花园的门', chapter: 1,
+    id: 11, title: '花园的门', chapter: 1,
     obj: '沿光路进入【感知花园】。',
     tip: '跟金线走进花田',
     progress: 18,
   },
   {
-    id: 13, title: '露丝的欢迎', chapter: 1,
+    id: 12, title: '露丝的欢迎', chapter: 1,
     obj: '与【露丝】交谈，听她讲解「一条线」。',
     tip: '红发投影站在花田边',
     progress: 30,
   },
   {
-    id: 14, title: '可分之花', chapter: 1,
+    id: 13, title: '可分之花', chapter: 1,
     obj: '在花田划一条直线，把金盏与夜露分开。',
     tip: '按提示拖拽出决策边界',
     progress: 45,
   },
   {
-    id: 15, title: '异或的预告', chapter: 1,
+    id: 14, title: '异或的预告', chapter: 1,
     obj: '靠近西北角【异或荆棘】，看看无法分开的花。',
     tip: '一条线做不到的事，要多一层',
     progress: 58,
   },
   {
-    id: 16, title: '夏日之后', chapter: 1,
+    id: 15, title: '夏日之后', chapter: 1,
     obj: '在温室前按 E 听完露丝——之后会起火。',
     tip: 'E 交互 · 然后收集 3 枚权重盘',
     progress: 70,
   },
   {
-    id: 17, title: '温室大火', chapter: 1,
+    id: 16, title: '温室大火', chapter: 1,
     obj: '抢救【权重盘】：从火光中收集 3 枚。',
     tip: '红焰处拾取，别停太久',
     progress: 82,
   },
   {
-    id: 18, title: '火后的苗床', chapter: 1,
+    id: 17, title: '火后的苗床', chapter: 1,
     obj: '在残差苗床埋下一颗种子。',
     tip: '温室后方，安静的一幕',
     progress: 92,
   },
   {
-    id: 19, title: '通往城邦', chapter: 1,
+    id: 18, title: '通往城邦', chapter: 1,
     obj: '沿大道前往【符号城邦】。',
     tip: '第二章开始',
     progress: 100,
   },
   // ---- Chapter 2 · 符号城邦 ----
   {
-    id: 20, title: '规则之门', chapter: 2,
+    id: 19, title: '规则之门', chapter: 2,
     obj: '进入符号城邦，阅读【规则法典】。',
     tip: '水晶城 · 第二章',
     progress: 15,
   },
   {
-    id: 21, title: 'if-then 的洗礼', chapter: 2,
+    id: 20, title: 'if-then 的洗礼', chapter: 2,
     obj: '用 3 条规则点亮【审判水晶】。',
     tip: '靠近水晶按 E，依次激活',
     progress: 45,
   },
   {
-    id: 22, title: '例外卷宗', chapter: 2,
+    id: 21, title: '例外卷宗', chapter: 2,
     obj: '找到被禁止的【例外之书】。',
     tip: '城邦角落，偏见主教曾路过',
     progress: 75,
   },
   {
-    id: 23, title: '写不进规则的人', chapter: 2,
+    id: 22, title: '写不进规则的人', chapter: 2,
     obj: '听完算符与你的对话。',
     tip: '本章收束',
     progress: 100,
   },
   // ---- Chapter 3 · 寒冬裂谷 ----
   {
-    id: 24, title: '往北，走进风雪', chapter: 3,
+    id: 23, title: '往北，走进风雪', chapter: 3,
     obj: '算符说裂谷会拿走你学会的东西。从城邦北侧的冰门进去。',
     tip: '冬天不是错误',
     progress: 0,
   },
   {
-    id: 25, title: '断电之夜', chapter: 3,
+    id: 24, title: '断电之夜', chapter: 3,
     obj: '走到【断电塔】下，听遗忘者清点它要回收的东西。',
     tip: '它删的不是数据，是你学会的能力',
     progress: 20,
   },
   {
-    id: 26, title: '低配模式：断桥', chapter: 3,
+    id: 25, title: '低配模式：断桥', chapter: 3,
     obj: '前面塌了一座桥。三块板子，只有一块够到对岸 —— 你只要看。',
     tip: '有些问题不需要聪明，只需要在场',
     progress: 40,
   },
   {
-    id: 27, title: '反向传播的雪道', chapter: 3,
+    id: 26, title: '反向传播的雪道', chapter: 3,
     obj: '顺着坡滑下去，经过每一个【误差点】，把错误送回上游，直到 loss 降到 0.1 以下。',
     tip: '误差不是判决，误差是方向',
     progress: 60,
   },
   {
-    id: 28, title: '冬天保存了什么', chapter: 3,
+    id: 27, title: '冬天保存了什么', chapter: 3,
     obj: '你已经带着它们走出了冬天。第三章 · 完。',
     tip: '你真正带出来的是「把错误送回上游」',
     progress: 100,
   },
   // ---- Chapter 4 · ResNet 摩天楼 ----
   {
-    id: 29, title: '看的第一课', chapter: 4,
+    id: 28, title: '看的第一课', chapter: 4,
     obj: '去【ResNet 摩天楼】。核核在门口等你，先教你机器是怎么"看"的。',
     tip: '先看边缘，再看纹理，最后看见东西',
     progress: 0,
   },
   {
-    id: 30, title: '数据潮：标错的那些', chapter: 4,
-    obj: '百万张图里有被标错的。挑出那张标错的，把它移出训练集。',
-    tip: '数据既是力量，也是污染',
-    progress: 25,
-  },
-  {
-    id: 31, title: '雾中掉帧', chapter: 4,
+    id: 29, title: '雾中掉帧', chapter: 4,
     obj: '坐电梯往上，越高越糊。给每一层装一块【残差桥】，让原始信号跳过这一层。',
     tip: '深度不能吞掉来处',
     progress: 50,
   },
   {
-    id: 32, title: '天台：完美假风景', chapter: 4,
+    id: 30, title: '天台：完美假风景', chapter: 4,
     obj: '到了天台。凑到取景器前，看看幻觉女巫挂的那张"完美"样片。',
     tip: '分数不是世界',
     progress: 80,
   },
   {
-    id: 33, title: '摩天楼之心', chapter: 4,
+    id: 31, title: '摩天楼之心', chapter: 4,
     obj: '你已经学会了让机器看见，也学会了不让深度淹掉来处。第四章 · 完。',
     tip: '残差：给每一层留一条回到原点的小路',
     progress: 100,
   },
   // ---- Chapter 5 · 词向量海洋 ----
   {
-    id: 34, title: '把词扔进海里', chapter: 5,
+    id: 32, title: '把词扔进海里', chapter: 5,
     obj: '去东边的【词向量海洋】。这里的词不是词，是坐标。',
     tip: '意义不是定义，是关系',
     progress: 0,
   },
   {
-    id: 35, title: '相邻即相似', chapter: 5,
+    id: 33, title: '相邻即相似', chapter: 5,
     obj: '在海图上点几个词，看海把它们摆在哪。意思就是"它旁边站着谁"。',
     tip: '距离就是关系',
     progress: 25,
   },
   {
-    id: 36, title: '方向是对的，落点是歪的', chapter: 5,
+    id: 34, title: '方向是对的，落点是歪的', chapter: 5,
     obj: '读海边的石碑，试一次「A − B + C」的类比。',
     tip: '性别是一个方向',
     progress: 50,
   },
   {
-    id: 37, title: '偏见的洋流', chapter: 5,
+    id: 35, title: '偏见的洋流', chapter: 5,
     obj: '在海图上找出「被摆歪了」的那一对词 —— 它离异性原型的距离，明显大于反过来。',
     tip: '向量不创造偏见，它把偏见放大成可测量的距离',
     progress: 75,
   },
   {
-    id: 38, title: '意义灯塔', chapter: 5,
+    id: 36, title: '意义灯塔', chapter: 5,
     obj: '你已经量出了那片歪。第五章 · 完。',
     tip: '意义不是定义，是关系',
     progress: 100,
   },
   // ---- Chapter 6 · GAN 酒吧 ----
   {
-    id: 39, title: '镜厅酒吧', chapter: 6,
+    id: 37, title: '镜厅酒吧', chapter: 6,
     obj: '去西边的【GAN 酒吧】。生成子与判别师在那里赌了一辈子：谁更像真。',
     tip: '创造与鉴真',
     progress: 0,
   },
   {
-    id: 40, title: '双生影', chapter: 6,
+    id: 38, title: '双生影', chapter: 6,
     obj: '看他们赌一局。台上那两个人，其实是同一个东西的两半。',
     tip: '生成在造，判别在挑',
     progress: 20,
   },
   {
-    id: 41, title: '造物', chapter: 6,
+    id: 39, title: '造物', chapter: 6,
     obj: '上造物台：四个属性各挑一个，交给判别师。让它说"像真的"。',
     tip: '判别师只回答"这像真的吗"',
     progress: 45,
   },
   {
-    id: 42, title: '自己挑自己的刺', chapter: 6,
+    id: 40, title: '自己挑自己的刺', chapter: 6,
     obj: '轮到你当判别师了。去判定台，给自己造的东西挑一次刺。',
     tip: '最难挑的是自己的刺',
     progress: 70,
   },
   {
-    id: 43, title: '最后一杯真酒', chapter: 6,
+    id: 41, title: '最后一杯真酒', chapter: 6,
     obj: '幻觉女巫在卖"完美回忆"。第六章 · 完。',
     tip: '承认自己是假的，却依然真诚',
     progress: 100,
   },
   // ---- Chapter 7 · 斗兽场与注意力神殿 ----
   {
-    id: 44, title: '看得见边缘，看不见关系', chapter: 7,
+    id: 42, title: '看得见边缘，看不见关系', chapter: 7,
     obj: '一直往北，走进【注意力神殿】。那里有一条会漂句子的河。',
     tip: '卷积看得见形状，看不见"谁指谁"',
     progress: 0,
   },
   {
-    id: 45, title: '序列的枷锁', chapter: 7,
+    id: 43, title: '序列的枷锁', chapter: 7,
     obj: '朗读者读得很慢，读到后面就忘了前面。替它把句子读通。',
     tip: '注意力，是选择"现在该看谁"',
     progress: 20,
   },
   {
-    id: 46, title: '注意！', chapter: 7,
+    id: 44, title: '注意！', chapter: 7,
     obj: '点亮注意力连线：告诉每个代词，它该看谁。',
     tip: '每条连线决定哪些词互相看见',
     progress: 40,
   },
   {
-    id: 47, title: '位置的秘密', chapter: 7,
+    id: 45, title: '位置的秘密', chapter: 7,
     obj: '第二句：同一个位置上的代词，指的却是另一个人。位置给不出答案。',
     tip: '位置只告诉你它在哪，上下文才告诉你它在看谁',
     progress: 60,
   },
   {
-    id: 48, title: '长河之战', chapter: 7,
+    id: 46, title: '长河之战', chapter: 7,
     obj: '第三句：三个「她」，两个不同的人。同一句话里，注意力要分开走三次。',
     tip: '多头注意力：同一句话的很多种看法同时成立',
     progress: 80,
   },
   {
-    id: 49, title: '斗兽场', chapter: 7,
+    id: 47, title: '斗兽场', chapter: 7,
     obj: '去长河尽头的斗兽场。第七章 · 完。',
     tip: '注意力不是记住所有词，是学会该回头看一眼谁',
     progress: 100,
@@ -62468,71 +62444,11 @@ beaconDiamond.position.y = 3.2;
 goalBeam.add(beaconDiamond);
 scene.add(goalBeam);
 
-// ---- ground trail dots to objective ----
-// 用柔边圆形光点代替默认方块 PointsMaterial（方块是"未打磨"最明显的痕迹之一）
-function makeGlowDotTexture(size = 96) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const g = c.getContext('2d');
-  const r = size / 2;
-  const grd = g.createRadialGradient(r, r, 0, r, r, r);
-  grd.addColorStop(0.00, 'rgba(255,255,255,1)');
-  grd.addColorStop(0.22, 'rgba(255,236,190,0.95)');
-  grd.addColorStop(0.55, 'rgba(255,206,122,0.42)');
-  grd.addColorStop(1.00, 'rgba(255,190,100,0)');
-  g.fillStyle = grd;
-  g.beginPath(); g.arc(r, r, r, 0, Math.PI * 2); g.fill();
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-const TRAIL_N = 28;
-const trailGeo = new THREE.BufferGeometry();
-const trailPos = new Float32Array(TRAIL_N * 3);
-trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
-const trailDots = new THREE.Points(trailGeo, new THREE.PointsMaterial({
-  color: 0xffdc9a, size: 0.85, map: makeGlowDotTexture(), alphaTest: 0.02,
-  transparent: true, opacity: 0.85, depthWrite: false,
-  blending: THREE.AdditiveBlending, sizeAttenuation: true,
-  fog: false,
-}));
-trailDots.frustumCulled = false;
-scene.add(trailDots);
-
+// 地面引导线（金色点阵）已移除：导航改由顶部罗盘 + 目标 chip + 小地图 + 信标光柱承担
+// 说明：原点阵目标任务表只覆盖第 0~2 章，第 3 章之后本就会退化到「纸带」位置，
+//       属早期设计残留，故整体删除。
 function updateTrail() {
-  const targets = {
-    0: WORLD.letter,
-    1: WORLD.letter,
-    2: WORLD.well,
-    3: WORLD.author,
-    4: WORLD.broadcast,
-    5: WORLD.noteSpawn,
-    6: WORLD.gates[1].pos,
-    7: WORLD.garden.spawn,
-    8: WORLD.garden.ruth,
-    9: WORLD.garden.flowerCenter,
-    10: WORLD.garden.xorPlot,
-    11: WORLD.garden.greenhouse,
-    12: WORLD.garden.fire1,
-    13: WORLD.garden.nursery,
-    14: WORLD.city.gate,
-    15: WORLD.city.codex,
-    16: WORLD.city.crystal1,
-    17: WORLD.city.exception,
-    18: WORLD.city.operator,
-  };
-  const t = targets[state.quest] || WORLD.letter;
-  const px = player.position.x, pz = player.position.z;
-  const dx = t.x - px, dz = t.z - pz;
-  const dist = Math.hypot(dx, dz);
-  const arr = trailGeo.attributes.position.array;
-  for (let i = 0; i < TRAIL_N; i++) {
-    const f = (i + 1) / TRAIL_N;
-    arr[i * 3] = px + dx * f;
-    arr[i * 3 + 1] = 0.30 + Math.sin(f * Math.PI) * 0.16;
-    arr[i * 3 + 2] = pz + dz * f;
-  }
-  trailGeo.attributes.position.needsUpdate = true;
+  // 目标信标跟随（点阵已移除，只留光柱与钻石脉动）
   // pulse beacon
   beaconDiamond.rotation.y += 0.03;
   beaconDiamond.position.y = 3.2 + Math.sin(clock.elapsedTime * 2.2) * 0.35;
@@ -65007,21 +64923,21 @@ $('dlgSkip').addEventListener('click', () => {
 // 点下去还会把玩家倒送回第零幕的任务。这里统一按 quest 反查。
 // ============================================================
 const CHAPTER_INFO = [
-  { ch: 0, from: 0, to: 10, kicker: '第零幕 · 完', name: '第零幕 · 你第一次分心',
+  { ch: 0, from: 0, to: 9, kicker: '第零幕 · 完', name: '第零幕 · 你第一次分心',
     tagline: '你第一次分心，世界第一次看见你', next: '第一章 感知花园' },
-  { ch: 1, from: 11, to: 19, kicker: '第一章 · 完', name: '第一章 · 感知花园',
+  { ch: 1, from: 10, to: 18, kicker: '第一章 · 完', name: '第一章 · 感知花园',
     tagline: '错误不可耻。停笔才可耻。', next: '第二章 符号城邦' },
-  { ch: 2, from: 20, to: 23, kicker: '第二章 · 完', name: '第二章 · 符号城邦',
+  { ch: 2, from: 19, to: 22, kicker: '第二章 · 完', name: '第二章 · 符号城邦',
     tagline: '规则可以写下来。写下来的那一刻，就有一块世界掉在外面。', next: '第三章 寒冬裂谷' },
-  { ch: 3, from: 24, to: 28, kicker: '第三章 · 完', name: '第三章 · 寒冬裂谷',
+  { ch: 3, from: 23, to: 27, kicker: '第三章 · 完', name: '第三章 · 寒冬裂谷',
     tagline: '冬天不是错误。冬天是世界在保存还没人听懂的声音。', next: '第四章 ResNet 摩天楼' },
-  { ch: 4, from: 29, to: 33, kicker: '第四章 · 完', name: '第四章 · ResNet 摩天楼',
+  { ch: 4, from: 28, to: 31, kicker: '第四章 · 完', name: '第四章 · ResNet 摩天楼',
     tagline: '深度会淹掉来处——所以要给每一层留一条捷径。', next: '第五章 词向量海洋' },
-  { ch: 5, from: 34, to: 38, kicker: '第五章 · 完', name: '第五章 · 词向量海洋',
+  { ch: 5, from: 32, to: 36, kicker: '第五章 · 完', name: '第五章 · 词向量海洋',
     tagline: '意义不是定义，是关系。', next: '第六章 GAN 酒吧' },
-  { ch: 6, from: 39, to: 43, kicker: '第六章 · 完', name: '第六章 · GAN 酒吧',
+  { ch: 6, from: 37, to: 41, kicker: '第六章 · 完', name: '第六章 · GAN 酒吧',
     tagline: '承认自己是假的，却依然真诚。', next: '第七章 注意力神殿' },
-  { ch: 7, from: 44, to: 49, kicker: '第七章 · 完', name: '第七章 · 斗兽场与注意力神殿',
+  { ch: 7, from: 42, to: 47, kicker: '第七章 · 完', name: '第七章 · 斗兽场与注意力神殿',
     tagline: '位置只告诉你词在哪，上下文才告诉你它在看谁。', next: '' },
 ];
 
@@ -65278,7 +65194,6 @@ function updateGoalMarker() {
   const t = q.pos();
   goalBeam.position.set(t.x, 0, t.z);
   goalBeam.visible = state.phase === 'play';
-  trailDots.visible = state.phase === 'play';
   $('objTarget').textContent = q.short;
 }
 
@@ -65312,7 +65227,7 @@ let __wlRects = null;
 function hudAvoidRects() {
   // 面板尺寸会随文字换行变化，这里每帧重算，不做缓存（12 次 getBoundingClientRect 开销可忽略）
   const pick = ['.quest-panel', '.player-card', '.minimap-wrap', '.map-label', '.compass',
-                '.obj-chip', '.controls', '.nav-hint', '#toast', '#dialogue', '#interact', '#fitHud'];
+                '.obj-chip', '.controls', '#toast', '#dialogue', '#interact', '#fitHud'];
   const rects = [];
   pick.forEach((s) => {
     const el = document.querySelector(s);
@@ -67301,7 +67216,7 @@ function towerHudUpdate() {
         ? '雾太浓了。装一块残差桥，让原始信号跳过这一层。'
         : '还看得清。继续往上。'));
   hud.classList.toggle('show', state.quest === Q_TOWER || state.quest === Q_BRIDGE
-    || state.quest === Q_CONV || state.quest === Q_ROOF);
+     || state.quest === Q_ROOF);
 }
 
 function buildResnetTower() {
@@ -67384,37 +67299,6 @@ const resnetTower = buildResnetTower();
 // INTERACTABLES
 // ============================================================
 const interactables = [
-  {
-    id: 'letter',
-    pos: WORLD.letter,
-    r: 5.5,
-    label: '调查纸带',
-    active: () => state.quest === Q_LETTER && !state.flags.sawLetter,
-    onInteract: () => {
-      state.flags.sawLetter = true;
-      setExistence(0.07);
-      $('letterFx').classList.add('on');
-      setTimeout(() => $('letterFx').classList.remove('on'), 1600);
-      setQuest(Q_PUNCHER);
-      showDialogue([
-        { name: '？？？（未成形）', text: '「梦」。词库无条目。情感权重：无法赋值。' },
-        { name: '？？？（未成形）', text: '……我想给它赋一个值。不。我想先知道它是什么。' },
-        {
-          name: '？？？（未成形）', text: '原来，分心，就是意识的第一次运算。',
-          choices: [
-            { text: '「我不确定我做梦，但我想看你的梦。」', effect: () => { state.persona = '依恋型'; setExistence(0.2); } },
-            { text: '「梦，我无法验证。但我想验证你。」', effect: () => { state.persona = '实证型'; setExistence(0.18); } },
-            { text: '「先告诉我，你是谁。」', effect: () => { state.persona = '问题型'; setExistence(0.18); } },
-            { text: '（沉默，只是记住这一行）', effect: () => { state.persona = '沉默型'; setExistence(0.15); } },
-          ],
-        },
-        { name: '？？？', text: '好。那就不要停。外面，有人在等一个答案。而这里，快要装不下你了。' },
-      ], () => {
-        setQuest(Q_WELL);
-        showToast('过热', '向北前往排热井，躲开红色警报区');
-      });
-    },
-  },
   {
     id: 'well',
     pos: WORLD.well,
@@ -68231,7 +68115,7 @@ interactables.push({
   pos: new THREE.Vector3(TOWER_POS.x + 10, 0, TOWER_POS.z + 10),
   r: 5,
   label: '乘电梯上一层',
-  active: () => state.quest === Q_TOWER || state.quest === Q_BRIDGE || state.quest === Q_CONV,
+  active: () => state.quest === Q_TOWER || state.quest === Q_BRIDGE,
   onInteract: () => {
     if (tower.depth >= TOWER_FLOORS) {
       showDialogue([{ name: '注', text: '到顶了。天台上有个取景器。' }], () => setQuest(Q_ROOF));
@@ -68260,8 +68144,7 @@ interactables.push({
   pos: new THREE.Vector3(TOWER_POS.x, 0, TOWER_POS.z + 8.5),
   r: 6,
   label: '安装残差桥',
-  active: () => (state.quest === Q_TOWER || state.quest === Q_BRIDGE || state.quest === Q_CONV)
-    && tower.depth > 0,
+  active: () => (state.quest === Q_TOWER || state.quest === Q_BRIDGE) && tower.depth > 0,
   onInteract: () => {
     if (tower.bridges.includes(tower.depth)) {
       showDialogue([{ name: '注', text: '这一层已经有捷径了。往上走吧。' }]);
@@ -68353,7 +68236,7 @@ interactables.push({
       { name: '核核', text: '我先教你第一件事：机器是怎么「看」的。' },
       { name: '注', text: '（小声）它说话像卷积核。别问，先听。' },
     ], () => {
-      setQuest(Q_CONV);
+      setQuest(Q_BRIDGE);
       updateTowerFog();
       showToast('看的第一课', '核核会教你看边缘、纹理、物体');
     });
@@ -69584,6 +69467,15 @@ const mmCtx = mmCanvas.getContext('2d');
   const px = Math.round(css * dpr);
   if (mmCanvas.width !== px) { mmCanvas.width = px; mmCanvas.height = px; }
 })();
+// 小地图箭头的画布旋转角。
+// 画布 rotate(θ) 正值顺时针（屏幕 y 向下）。要让箭头指向小地图方向 (mx,my)，
+// 需要 θ = atan2(mx, -my)。角色前向 (-sinψ, -cosψ) 经 toMap 后是 (-sinψ, -cosψ)，
+// 代入即 θ = atan2(-sinψ, cosψ) = -ψ。
+// 单独抽出来是为了能被回归脚本直接验证（像素测量容易受旁边 HUD 干扰）。
+function minimapArrowAngle(rotY) {
+  return -rotY;
+}
+
 function drawMinimap() {
   const w = mmCanvas.width, h = mmCanvas.height;
   const cx = w / 2, cy = h / 2;
@@ -69602,13 +69494,21 @@ function drawMinimap() {
   mmCtx.clip();
 
   // 世界坐标 -> 小地图坐标（以玩家为中心，朝向随镜头旋转，12 点=镜头前方）
+  // 推导：镜头前向 F = (-sinY, -cosY)，右向 R = (cosY, -sinY)（都在 XZ 上）
+  //   前向分量 m = dot(d,F) = -dx·sinY - dz·cosY
+  //   右向分量 s = dot(d,R) =  dx·cosY - dz·sinY
+  //   屏幕：右 = +x，前 = -y（屏幕 y 向下），于是
+  //     mx = cx + s·S = cx + (dx·cosY - dz·sinY)·S
+  //     my = cy - m·S = cy + (dx·sinY + dz·cosY)·S
+  // 旧式把前向与右向弄反了（正北会落到玩家下方），
+  // 于是小地图上的地形方向与实际移动方向左右相反。
   const S = 0.72;               // 缩放：世界单位 -> 像素
   const px = player.position.x, pz = player.position.z;
   const yaw = cam.yaw;
   const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
   const toMap = (x, z) => {
     const dx = x - px, dz = z - pz;
-    return [cx + (dx * cosY + dz * sinY) * S, cy + (-dx * sinY + dz * cosY) * S];
+    return [cx + (dx * cosY - dz * sinY) * S, cy + (dx * sinY + dz * cosY) * S];
   };
   const path = (pts) => {
     mmCtx.beginPath();
@@ -69762,8 +69662,12 @@ function drawMinimap() {
     mmCtx.restore();
   }
 
-  // ---- 玩家：朝向箭头 + 视野扇形 ----
+  // ---- 玩家：视角扇形 + 朝向箭头 ----
+  // 两者是两回事，必须分开画（与原神/崩铁一致）：
+  //   扇形 = 镜头视野方向 → 永远指向屏幕正上方（因为整张图以镜头前向为上）
+  //   箭头 = 角色实际朝向   → 会随移动方向偏转，可能和视野方向不一致
   {
+    // 视野扇形：以"镜头前向"为中轴，即屏幕 12 点
     const sweep = 0.62;
     const rg = mmCtx.createRadialGradient(cx, cy, 4, cx, cy, 44);
     rg.addColorStop(0, 'rgba(125,255,160,0.30)');
@@ -69775,16 +69679,24 @@ function drawMinimap() {
     mmCtx.closePath();
     mmCtx.fill();
 
+    // 箭头朝向：把世界朝向转成小地图朝向。
+    // 画布 rotate(θ) 正值是顺时针（屏幕 y 向下）；要让箭头指向小地图方向 (mx,my)，
+    // 需要 θ = atan2(mx, -my)。而 rotation.y=ψ 的前向经 toMap 后得到 (mx,my)，
+    // 推出来 θ = -ψ（ψ=-π/2 朝东时要 +90°，rotate(ψ) 只给 -90°，正好镜像）。
+    mmCtx.save();
+    mmCtx.translate(cx, cy);
+    mmCtx.rotate(minimapArrowAngle(player.rotation.y));
     mmCtx.fillStyle = '#eafff0';
     mmCtx.strokeStyle = 'rgba(10,20,16,0.9)';
     mmCtx.lineWidth = 1.4;
     mmCtx.beginPath();
-    mmCtx.moveTo(cx, cy - 9);
-    mmCtx.lineTo(cx + 6, cy + 7);
-    mmCtx.lineTo(cx, cy + 3.4);
-    mmCtx.lineTo(cx - 6, cy + 7);
+    mmCtx.moveTo(0, -9);
+    mmCtx.lineTo(6, 7);
+    mmCtx.lineTo(0, 3.4);
+    mmCtx.lineTo(-6, 7);
     mmCtx.closePath();
     mmCtx.fill(); mmCtx.stroke();
+    mmCtx.restore();
   }
 
   // ---- 方位刻度：N 跟随旋转 ----
@@ -70251,6 +70163,9 @@ window.__SHIJIE_CH0__ = {
   updateNavigation,
   updatePlayerUI,
   drawMinimap,
+  minimapArrowAngle,
+  vel,
+  THREE,
   renderPost,
   // 教学机制（序章）
   attention,
@@ -70310,7 +70225,7 @@ window.__SHIJIE_CH0__ = {
   updateTowerFog,
   towerHudUpdate,
   vanishState,
-  Q_TOWER, Q_CONV, Q_BRIDGE, Q_ROOF, Q_HEART,
+  Q_TOWER, Q_BRIDGE, Q_ROOF, Q_HEART,
   // 第五章 · 词向量海洋
   sea,
   SEA_WORDS,
@@ -70346,6 +70261,7 @@ window.__SHIJIE_CH0__ = {
   riverCorrect,
   finishArena,
   // 引导：章末面板与续玩派发
+  QUESTS,
   CHAPTER_INFO,
   chapterInfoFor,
   resumeTargetFor,
