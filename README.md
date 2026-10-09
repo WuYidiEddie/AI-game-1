@@ -4,6 +4,12 @@
 
 **核心设定**：人类教科书上的每一项 AI 突破，都是 AI「初」为了读懂人类，自己想出来的招式。
 
+## ▶ 在线直接玩
+
+**https://wuyidieddie.github.io/AI-game-1/game/shijie.html**
+
+无需下载、无需构建，点开即玩（建议 Chrome / Edge）。仓库内的同一份文件在 [`game/shijie.html`](game/shijie.html)。
+
 ---
 
 ## 现在可以玩到哪里
@@ -23,9 +29,12 @@
 
 **打开方式**
 
-1. 下载或打开 [`game/shijie.html`](game/shijie.html)（单文件，内置 Three.js，无需构建、无外网依赖）
-2. 建议用 Chrome / Edge
-3. 模型从 `game/models/*.glb` 相对加载；用本地静态服务打开最稳（直接双击也能玩，模型会缺省降级）
+1. **在线玩**：<https://wuyidieddie.github.io/AI-game-1/game/shijie.html>
+2. **本地玩**：下载 [`game/shijie.html`](game/shijie.html)（单文件，内置 Three.js，无需构建、无外网依赖），双击即可
+3. 建议用 Chrome / Edge
+4. 模型从 `game/models/*.glb` 相对加载；在线版与本地静态服务都会正常加载，直接以 `file://` 双击打开时模型会缺省降级（不影响游玩）
+
+> 旧链接 `game/chapter0.html` 仍然可用，会自动跳转到 `game/shijie.html`。
 
 **操作**
 
