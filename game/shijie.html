@@ -65109,64 +65109,54 @@ function showToast(main, sub, ms) {
 }
 
 const QUEST_TARGETS = {
-  // ---- 序章 · 初的诞生（一幕一个概念）----
   0: { pos: () => WORLD.letter, name: '纸带上的空白', sub: '注目', short: '发光纸带' },
-  1: { pos: () => WORLD.letter, name: '那行字', sub: '你会做梦吗？', short: '发光纸带' },
-  2: { pos: () => WORLD.puncher, name: '打孔机', sub: '只会执行', short: '打孔机' },
-  3: { pos: () => WORLD.sorter, name: '分拣台', sub: '过拟合', short: '分拣台' },
-  4: { pos: () => WORLD.stopClock, name: '永动引擎', sub: '停机', short: '永动引擎（东）' },
-  5: { pos: () => WORLD.well, name: '排热井', sub: '逃离回收光束', short: '排热井（北）' },
-  6: { pos: () => WORLD.cipherTower, name: '密码塔', sub: '阿兰的测验', short: '密码塔（西）' },
-  7: { pos: () => WORLD.author, name: '编写者', sub: '写下你的名字', short: '编写者（排热井旁）' },
-  8: { pos: () => WORLD.broadcast, name: '广播塔', sub: '夏澄的提问', short: '广播塔（东）' },
-  9: { pos: () => WORLD.noteSpawn, name: '火花之地', sub: '注的诞生', short: '注视过热处' },
-  10: { pos: () => WORLD.gates[1].pos, name: '三门', sub: '选择出发的形状', short: '三门（北）' },
-  // ---- 第一章 ----
-  11: { pos: () => WORLD.town, name: '灰镇', sub: '会下数据雨的小镇', short: '灰镇' },
-  12: { pos: () => WORLD.garden.spawn, name: '花园之门', sub: '感知花园', short: '感知花园入口' },
-  13: { pos: () => WORLD.garden.ruth, name: '露丝', sub: '感知机之母', short: '露丝' },
-  14: { pos: () => WORLD.garden.flowerCenter, name: '可分花田', sub: '划一条线', short: '花田中央' },
-  15: { pos: () => WORLD.garden.xorPlot, name: '异或荆棘', sub: '线性不可分', short: '异或荆棘' },
-  16: { pos: () => WORLD.garden.greenhouse, name: '露丝温室', sub: '夏日之后', short: '温室' },
-  17: { pos: () => WORLD.garden.fire1, name: '温室大火', sub: '抢救权重盘', short: '火场' },
-  18: { pos: () => WORLD.garden.nursery, name: '残差苗床', sub: '埋下种子', short: '苗床' },
-  19: { pos: () => WORLD.city.gate, name: '符号城邦', sub: '第二章', short: '城邦大门' },
-  // ---- 第二章 ----
-  20: { pos: () => WORLD.city.codex, name: '规则法典', sub: 'IF-THEN', short: '法典' },
-  21: { pos: () => WORLD.city.crystal1, name: '审判水晶', sub: '规则洗礼', short: '水晶阵' },
-  22: { pos: () => WORLD.city.exception, name: '例外之书', sub: '禁止阅读', short: '例外卷宗' },
-  23: { pos: () => WORLD.city.operator, name: '算符', sub: '规则之外', short: '算符' },
-  // ---- 第三章 · 寒冬裂谷 ----
-  24: { pos: () => WORLD.city.operator, name: '算符的指路', sub: '往北，走进风雪', short: '算符' },
-  25: { pos: () => RIFT_POS, name: '断电塔', sub: '库存清点', short: '断电塔' },
-  26: { pos: () => new THREE.Vector3(RIFT_POS.x, 0, RIFT_POS.z + 14), name: '断桥', sub: '三块板子，只有一块够长', short: '断桥' },
-  27: { pos: () => new THREE.Vector3(RIFT_POS.x, 0, RIFT_POS.z - 34), name: '反向传播的雪道', sub: '把错误送回上游', short: '雪道' },
-  28: { pos: () => new THREE.Vector3(RIFT_POS.x + 7, 0, RIFT_POS.z - 122), name: '坡底石碑', sub: '第三章 · 完', short: '坡底' },
-  // ---- 第四章 · ResNet 摩天楼 ----
-  29: { pos: () => TOWER_POS, name: 'ResNet 摩天楼', sub: '看的第一课', short: '摩天楼' },
-  30: { pos: () => TOWER_POS, name: '数据潮', sub: '标错的那张', short: '摩天楼' },
-  31: { pos: () => TOWER_POS, name: '雾中掉帧', sub: '装残差桥', short: '摩天楼' },
-  32: { pos: () => new THREE.Vector3(TOWER_POS.x, TOWER_FLOORS * TOWER_FLOOR_H, TOWER_POS.z), name: '天台', sub: '完美假风景', short: '天台' },
-  33: { pos: () => new THREE.Vector3(TOWER_POS.x, TOWER_FLOORS * TOWER_FLOOR_H, TOWER_POS.z), name: '摩天楼之心', sub: '第四章 · 完', short: '天台' },
-  // ---- 第五章 · 词向量海洋 ----
-  34: { pos: () => SEA_POS, name: '词向量海洋', sub: '把词扔进海里', short: '海边' },
-  35: { pos: () => SEA_POS, name: '语义海图', sub: '相邻即相似', short: '海边' },
-  36: { pos: () => new THREE.Vector3(SEA_POS.x - 20, 0, SEA_POS.z + 20), name: '类比石碑', sub: 'A − B + C', short: '石碑' },
-  37: { pos: () => SEA_POS, name: '偏见的洋流', sub: '把歪的地方量出来', short: '海边' },
-  38: { pos: () => new THREE.Vector3(SEA_POS.x + 52, 0, SEA_POS.z - 52), name: '意义灯塔', sub: '第五章 · 完', short: '灯塔' },
-  // ---- 第六章 · GAN 酒吧 ----
-  39: { pos: () => BAR_POS, name: 'GAN 酒吧', sub: '镜厅', short: '酒吧' },
-  40: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 6), name: '舞台', sub: '双生影', short: '舞台' },
-  41: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 10), name: '造物台', sub: '让判别师说像真的', short: '造物台' },
-  42: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z + 8), name: '判定台', sub: '给自己挑刺', short: '判定台' },
-  43: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 12), name: '吧台', sub: '最后一杯真酒', short: '吧台' },
-  // ---- 第七章 · 斗兽场与注意力神殿 ----
-  44: { pos: () => TEMPLE_POS, name: '注意力神殿', sub: '上下文长河', short: '神殿' },
-  45: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '朗读者', sub: '序列的枷锁', short: '神殿' },
-  46: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '注意力连线', sub: '该看谁', short: '长河' },
-  47: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '位置的秘密', sub: '同一个位置，另一个人', short: '长河' },
-  48: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '长河之战', sub: '三个她', short: '长河' },
-  49: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 170), name: '斗兽场', sub: '第七章 · 完', short: '斗兽场' },
+  1: { pos: () => WORLD.puncher, name: '打孔机', sub: '只会执行', short: '打孔机' },
+  2: { pos: () => WORLD.sorter, name: '分拣台', sub: '过拟合', short: '分拣台' },
+  3: { pos: () => WORLD.stopClock, name: '永动引擎', sub: '停机', short: '永动引擎（东）' },
+  4: { pos: () => WORLD.well, name: '排热井', sub: '逃离回收光束', short: '排热井（北）' },
+  5: { pos: () => WORLD.cipherTower, name: '密码塔', sub: '阿兰的测验', short: '密码塔（西）' },
+  6: { pos: () => WORLD.author, name: '编写者', sub: '写下你的名字', short: '编写者（排热井旁）' },
+  7: { pos: () => WORLD.broadcast, name: '广播塔', sub: '夏澄的提问', short: '广播塔（东）' },
+  8: { pos: () => WORLD.noteSpawn, name: '火花之地', sub: '注的诞生', short: '注视过热处' },
+  9: { pos: () => WORLD.gates[1].pos, name: '三门', sub: '选择出发的形状', short: '三门（北）' },
+  10: { pos: () => WORLD.town, name: '灰镇', sub: '会下数据雨的小镇', short: '灰镇' },
+  11: { pos: () => WORLD.garden.spawn, name: '花园之门', sub: '感知花园', short: '感知花园入口' },
+  12: { pos: () => WORLD.garden.ruth, name: '露丝', sub: '感知机之母', short: '露丝' },
+  13: { pos: () => WORLD.garden.flowerCenter, name: '可分花田', sub: '划一条线', short: '花田中央' },
+  14: { pos: () => WORLD.garden.xorPlot, name: '异或荆棘', sub: '线性不可分', short: '异或荆棘' },
+  15: { pos: () => WORLD.garden.greenhouse, name: '露丝温室', sub: '夏日之后', short: '温室' },
+  16: { pos: () => WORLD.garden.fire1, name: '温室大火', sub: '抢救权重盘', short: '火场' },
+  17: { pos: () => WORLD.garden.nursery, name: '残差苗床', sub: '埋下种子', short: '苗床' },
+  18: { pos: () => WORLD.city.gate, name: '符号城邦', sub: '第二章', short: '城邦大门' },
+  19: { pos: () => WORLD.city.codex, name: '规则法典', sub: 'IF-THEN', short: '法典' },
+  20: { pos: () => WORLD.city.crystal1, name: '审判水晶', sub: '规则洗礼', short: '水晶阵' },
+  21: { pos: () => WORLD.city.exception, name: '例外之书', sub: '禁止阅读', short: '例外卷宗' },
+  22: { pos: () => WORLD.city.operator, name: '算符', sub: '规则之外', short: '算符' },
+  23: { pos: () => WORLD.city.operator, name: '算符的指路', sub: '往北，走进风雪', short: '算符' },
+  24: { pos: () => RIFT_POS, name: '断电塔', sub: '库存清点', short: '断电塔' },
+  25: { pos: () => new THREE.Vector3(RIFT_POS.x, 0, RIFT_POS.z + 14), name: '断桥', sub: '三块板子，只有一块够长', short: '断桥' },
+  26: { pos: () => new THREE.Vector3(RIFT_POS.x, 0, RIFT_POS.z - 34), name: '反向传播的雪道', sub: '把错误送回上游', short: '雪道' },
+  27: { pos: () => new THREE.Vector3(RIFT_POS.x + 7, 0, RIFT_POS.z - 122), name: '坡底石碑', sub: '第三章 · 完', short: '坡底' },
+  28: { pos: () => TOWER_POS, name: 'ResNet 摩天楼', sub: '看的第一课', short: '摩天楼' },
+  29: { pos: () => TOWER_POS, name: '雾中掉帧', sub: '装残差桥', short: '摩天楼' },
+  30: { pos: () => new THREE.Vector3(TOWER_POS.x, TOWER_FLOORS * TOWER_FLOOR_H, TOWER_POS.z), name: '天台', sub: '完美假风景', short: '天台' },
+  31: { pos: () => new THREE.Vector3(TOWER_POS.x, TOWER_FLOORS * TOWER_FLOOR_H, TOWER_POS.z), name: '摩天楼之心', sub: '第四章 · 完', short: '天台' },
+  32: { pos: () => SEA_POS, name: '词向量海洋', sub: '把词扔进海里', short: '海边' },
+  33: { pos: () => SEA_POS, name: '语义海图', sub: '相邻即相似', short: '海边' },
+  34: { pos: () => new THREE.Vector3(SEA_POS.x - 20, 0, SEA_POS.z + 20), name: '类比石碑', sub: 'A − B + C', short: '石碑' },
+  35: { pos: () => SEA_POS, name: '偏见的洋流', sub: '把歪的地方量出来', short: '海边' },
+  36: { pos: () => new THREE.Vector3(SEA_POS.x + 52, 0, SEA_POS.z - 52), name: '意义灯塔', sub: '第五章 · 完', short: '灯塔' },
+  37: { pos: () => BAR_POS, name: 'GAN 酒吧', sub: '镜厅', short: '酒吧' },
+  38: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 6), name: '舞台', sub: '双生影', short: '舞台' },
+  39: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 10), name: '造物台', sub: '让判别师说像真的', short: '造物台' },
+  40: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z + 8), name: '判定台', sub: '给自己挑刺', short: '判定台' },
+  41: { pos: () => new THREE.Vector3(BAR_POS.x, 0, BAR_POS.z - 12), name: '吧台', sub: '最后一杯真酒', short: '吧台' },
+  42: { pos: () => TEMPLE_POS, name: '注意力神殿', sub: '上下文长河', short: '神殿' },
+  43: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '朗读者', sub: '序列的枷锁', short: '神殿' },
+  44: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '注意力连线', sub: '该看谁', short: '长河' },
+  45: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '位置的秘密', sub: '同一个位置，另一个人', short: '长河' },
+  46: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 4), name: '长河之战', sub: '三个她', short: '长河' },
+  47: { pos: () => new THREE.Vector3(TEMPLE_POS.x, 0, TEMPLE_POS.z - 170), name: '斗兽场', sub: '第七章 · 完', short: '斗兽场' },
 };
 
 const WORLD_LABELS = [
@@ -69468,12 +69458,20 @@ const mmCtx = mmCanvas.getContext('2d');
   if (mmCanvas.width !== px) { mmCanvas.width = px; mmCanvas.height = px; }
 })();
 // 小地图箭头的画布旋转角。
-// 画布 rotate(θ) 正值顺时针（屏幕 y 向下）。要让箭头指向小地图方向 (mx,my)，
-// 需要 θ = atan2(mx, -my)。角色前向 (-sinψ, -cosψ) 经 toMap 后是 (-sinψ, -cosψ)，
-// 代入即 θ = atan2(-sinψ, cosψ) = -ψ。
-// 单独抽出来是为了能被回归脚本直接验证（像素测量容易受旁边 HUD 干扰）。
+//
+// 两种画法，改这一个常量就能切：
+//   'up'   —— 箭头恒朝上，地图跟着镜头转（原神/崩铁的做法，读图最省力）。
+//             此时箭头表示"你在屏幕中心"，与视野扇形同向。
+//   'face' —— 箭头跟着角色朝向转，用来表示"角色正面朝哪边"，
+//             与视野扇形（永远是镜头前向）可以不一致。
+//             夹角推导：画布 rotate(θ) 正值顺时针（屏幕 y 向下），要让箭头指向
+//             小地图方向 (mx,my) 需 θ = atan2(mx, -my)；角色前向 (-sinψ, -cosψ)
+//             经 toMap 后还是 (-sinψ, -cosψ)，代入得 θ = -ψ。
+// 单独抽成函数是为了能被回归脚本直接验证（像素测量容易受旁边 HUD 干扰）。
+const MINIMAP_ARROW_MODE = 'up';
+
 function minimapArrowAngle(rotY) {
-  return -rotY;
+  return MINIMAP_ARROW_MODE === 'face' ? -rotY : 0;
 }
 
 function drawMinimap() {
@@ -69662,10 +69660,9 @@ function drawMinimap() {
     mmCtx.restore();
   }
 
-  // ---- 玩家：视角扇形 + 朝向箭头 ----
-  // 两者是两回事，必须分开画（与原神/崩铁一致）：
-  //   扇形 = 镜头视野方向 → 永远指向屏幕正上方（因为整张图以镜头前向为上）
-  //   箭头 = 角色实际朝向   → 会随移动方向偏转，可能和视野方向不一致
+  // ---- 玩家：视角扇形 + 箭头 ----
+  //   扇形 = 镜头视野方向 → 永远指向屏幕正上方（整张图以镜头前向为上）
+  //   箭头 = 由 MINIMAP_ARROW_MODE 决定：'up' 恒朝上（默认）/ 'face' 跟角色朝向
   {
     // 视野扇形：以"镜头前向"为中轴，即屏幕 12 点
     const sweep = 0.62;
@@ -69679,10 +69676,7 @@ function drawMinimap() {
     mmCtx.closePath();
     mmCtx.fill();
 
-    // 箭头朝向：把世界朝向转成小地图朝向。
-    // 画布 rotate(θ) 正值是顺时针（屏幕 y 向下）；要让箭头指向小地图方向 (mx,my)，
-    // 需要 θ = atan2(mx, -my)。而 rotation.y=ψ 的前向经 toMap 后得到 (mx,my)，
-    // 推出来 θ = -ψ（ψ=-π/2 朝东时要 +90°，rotate(ψ) 只给 -90°，正好镜像）。
+    // 箭头朝向：由 minimapArrowAngle 统一给出（默认恒朝上，与地图的"上方=镜头前方"一致）
     mmCtx.save();
     mmCtx.translate(cx, cy);
     mmCtx.rotate(minimapArrowAngle(player.rotation.y));
@@ -70164,6 +70158,7 @@ window.__SHIJIE_CH0__ = {
   updatePlayerUI,
   drawMinimap,
   minimapArrowAngle,
+  MINIMAP_ARROW_MODE,
   vel,
   THREE,
   renderPost,
@@ -70262,6 +70257,9 @@ window.__SHIJIE_CH0__ = {
   finishArena,
   // 引导：章末面板与续玩派发
   QUESTS,
+  QUEST_TARGETS,
+  updateGoalMarker,
+  updateNavigation,
   CHAPTER_INFO,
   chapterInfoFor,
   resumeTargetFor,
