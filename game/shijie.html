@@ -362,6 +362,12 @@
   }
 
 
+  /* 花田解谜（俯视取景）：收掉会压在花田上的文字层，让数据花一眼可见 */
+  body.fit-mode #toast,
+  body.fit-mode .world-label,
+  body.fit-mode .map-label,
+  body.fit-mode #interact { opacity: 0 !important; visibility: hidden !important; }
+
   /* naming modal */
   #nameModal {
     position: absolute; inset: 0; z-index: 40; display: none;
@@ -457,7 +463,8 @@
 
   /* ===== 第一章 · 可分花田：拟合—检验面板 ===== */
   #fitHud {
-    position: absolute; left: 50%; top: 132px; transform: translateX(-50%) translateY(-6px);
+    /* 贴画面下缘：这块面板以前在 top:132px（正中），会把花田上半压掉 */
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%) translateY(6px);
     width: min(420px, 76vw); text-align: center;
     background: linear-gradient(180deg, rgba(13,20,32,.92), rgba(8,12,22,.88));
     border: 1px solid rgba(120,220,180,.32); border-radius: 3px;
@@ -467,7 +474,7 @@
   }
   #fitHud { visibility: hidden; }
   #fitHud.show { visibility: visible; }
-  #fitHud.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #fitHud.show { opacity: 1; transform: translateX(-50%) translateY(0); }   /* 底部面板：从下往上淡入 */
   #fitHud .fit-stage {
     color: #9fe8c8; font-size: 13px; letter-spacing: .22em;
   }
@@ -61545,6 +61552,9 @@ for (let i = 0; i < 5; i++) {
 }
 
 // soft ground fog planes for depth
+// 注意：花田解谜会把镜头拉到 y≈38 俯视，视线会同时穿过这几层雾，
+// 整片花田会被糊成蓝灰。所以解谜期间要收掉它们（见 decoFlowers.fogPlanes）。
+const groundFogPlanes = [];
 for (let i = 0; i < 4; i++) {
   const fogPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(400, 400),
@@ -61556,6 +61566,7 @@ for (let i = 0; i < 4; i++) {
   fogPlane.rotation.x = -Math.PI / 2;
   fogPlane.position.y = 1.2 + i * 3.5;
   scene.add(fogPlane);
+  groundFogPlanes.push(fogPlane);
 }
 
 // ---- paper tape sea (instanced strips) ----
@@ -63232,6 +63243,9 @@ for (let i = 0; i < 14; i++) {
   addLantern(x, z, i % 3 ? 0xffc070 : 0x9adcff);
 }
 
+// 装饰花（满地撒的那种）的引用：解谜时会被收起来，见 fitView 一节
+const decoFlowers = { gold: null, night: null, petals: null, fogPlanes: groundFogPlanes };
+
 // flower instances: gold (A) and night (B)
 function makeFlowerField() {
   const count = 160;
@@ -63271,6 +63285,10 @@ function makeFlowerField() {
     night.setMatrixAt(ni++, dummy.matrix);
   }
   gardenGroup.add(gold, night);
+  // 解谜期间要把这两片装饰花收掉：它们和"任务花"同色同形，压在同一个位置，
+  // 玩家分不清哪几朵才是要分类的数据点（这是实测里最误导的一处）。
+  decoFlowers.gold = gold;
+  decoFlowers.night = night;
   // stone path through garden
 for (let i = 0; i < 16; i++) {
   const t = i / 15;
@@ -63320,6 +63338,7 @@ for (let i = 0; i < 5; i++) {
     petalG.instanceMatrix.needsUpdate = true;
     petalN.instanceMatrix.needsUpdate = true;
     gardenGroup.add(petalG, petalN);
+    decoFlowers.petals = [petalG, petalN];
   }
 
   // stems as thin boxes (instanced, shared)
@@ -63353,6 +63372,7 @@ const fit = {
   stage: -1, solved: false,
   lineA: 1.35, lineB: 1.35, offA: 0, offB: 0,
   active: false, dragging: false, which: 'A', grabX: 0, grabY: 0,
+  reEnterAt: 0,      // 关闭后的重入冷却截止（performance.now 毫秒）
 };
 
 // 激活函数（非线性）的开关：整个第一章共用一个状态，
@@ -63484,6 +63504,13 @@ function fitBuildStage(idx) {
   decisionLine2.visible = st.combo === 'xor';
   fitUpdateLines();
   fitHudRefresh();
+  // 换了关卡 -> 花的范围变了，重新取景（异或关的检验花在 ±15，比第一关远得多）
+  if (fitView.active) {
+    const b = fitStageBounds();
+    fitView.anchor.set(b.cx, 0, b.cz + FIT_VIEW_SHIFT);
+    fitView.dist = fitViewDistance();
+    cam.targetDist = fitView.dist;
+  }
 }
 
 // 场地坐标 → 与决策线平行的投影。
@@ -63557,6 +63584,131 @@ function fitHudRefresh() {
   return { ok, total, okTrain, okVerify };
 }
 
+// ============================================================
+// 花田解谜的"俯视视角"：整张花田一屏装下
+// ------------------------------------------------------------
+// 之前镜头是绕玩家转的，而且 dist 上限 28，异或关的检验花在 ±15，
+// 玩家根本没法在一个画面里看全所有要分类的花，只能盲拖。
+// 这里改成：
+//   · 镜头锚点从"玩家"换成"花田中心"
+//   · 俯角拉到接近垂直（真·从上往下看）
+//   · 距离按当前关卡所有花的包围盒自动算，保证连最远的检验花也在画面内
+// ============================================================
+const FIT_VIEW_PITCH = 1.35;   // 花田解谜的俯角：接近垂直俯视
+// 锚点再往远处挪一点（yaw=0 时即 +z），让整片花田在画面里下移，
+// 避开顶部那块解谜面板（实测不挪的话有 3 朵花正好被面板盖住）。
+const FIT_VIEW_SHIFT = 0;   // 面板已挪到底部，花田重新居中，无需偏移
+const fitView = { active: false, anchor: new THREE.Vector3(), dist: 34, blend: 0 };
+
+// 当前关卡所有花（含检验花）的包围盒；没有花时退回花田中心
+function fitStageBounds() {
+  const st = FIT_STAGES[fit.stage] || FIT_STAGES[0];
+  const all = [...st.training, ...st.verify];
+  const cx = WORLD.garden.flowerCenter.x;
+  const cz = WORLD.garden.flowerCenter.z;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  all.forEach((d) => {
+    const wx = cx + d.x;
+    const wz = cz - d.u;             // 世界 z = center.z - u
+    minX = Math.min(minX, wx); maxX = Math.max(maxX, wx);
+    minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
+  });
+  if (!isFinite(minX)) return { cx, cz, halfX: 12, halfZ: 14 };
+  // 加上花本身与决策线的余量
+  const pad = 7;
+  return {
+    cx: (minX + maxX) / 2,
+    cz: (minZ + maxZ) / 2,
+    halfX: (maxX - minX) / 2 + pad,
+    halfZ: (maxZ - minZ) / 2 + pad,
+  };
+}
+
+// 取景距离：按真实相机基做投影迭代，直到每一朵花都落在安全区内。
+// 不用解析近似 —— 相机随距离变远时各点的相对深度也在变，"ndc ∝ 1/d"
+// 这个比例关系并不成立（实测会偏小 15%，把最上/最下的花切出画面）。
+const FIT_VIEW_BIAS_Y = 0.10;   // 花田在画面里整体略上移，避开底部解谜面板
+function fitViewFraming(d, safeX, safeY) {
+  const b = fitStageBounds();
+  const st = FIT_STAGES[fit.stage] || FIT_STAGES[0];
+  const pts = [...st.training, ...st.verify];
+  const fov = (camera.fov || 50) * Math.PI / 180;   // 本作实际是 50°
+  const aspect = camera.aspect || (window.innerWidth / window.innerHeight);
+  const tanV = Math.tan(fov / 2);
+  const tanH = tanV * aspect;
+  const sP = Math.sin(FIT_VIEW_PITCH), cP = Math.cos(FIT_VIEW_PITCH);
+  // 相机在锚点后方（相对 fwd 的反方向），fwd = (0, -sinP, -cosP)
+  const camX = b.cx;
+  const camY = 0 + sP * d;
+  const camZ = b.cz + FIT_VIEW_SHIFT + cP * d;   // 锚点已下移，相机位置同步
+  let k = 0;
+  pts.forEach((pt) => {
+    const wx = WORLD.garden.flowerCenter.x + pt.x;
+    const wz = WORLD.garden.flowerCenter.z - pt.u;
+    const wy = 1.75;
+    const px = wx - camX, py = wy - camY, pz = wz - camZ;
+    // 相机基：fwd = (0,-sP,-cP)，up = (0,cP,-sP)，right = (1,0,0)
+    const depth = -py * sP - pz * cP;          // 沿 fwd 的深度（应为正）
+    const upv = py * cP - pz * sP;
+    const rightv = px;
+    if (depth <= 1) { k = Math.max(k, 99); return; }
+    // 纵向偏置：把"可接受的中心"从 0 抬到 BIAS_Y（屏幕上方为 +y）
+    const upN = upv / (depth * tanV);
+    const overY = Math.abs(upN - FIT_VIEW_BIAS_Y) / safeY;
+    k = Math.max(k, Math.abs(rightv) / (depth * tanH * safeX), overY);
+  });
+  return k;   // <=1 表示装得下
+}
+
+function fitViewDistance() {
+  // 游戏实际 fov=50（比常见 55 窄），安全区必须收紧，否则边上的花仍会被切。
+  // 纵向收紧得更多：画面下缘有解谜面板（bottom:14px，约占 y 614~786 @800 高），
+  // 上缘有罗盘/目标 chip，所以花田只占中间那条带（约 NDC -0.72 ~ +0.52）。
+  const SAFE_X = 0.78, SAFE_Y = 0.62;
+  let d = 24;
+  for (let it = 0; it < 24; it++) {
+    const k = fitViewFraming(d, SAFE_X, SAFE_Y);
+    if (k <= 1) return clamp(d * 1.02, 16, 160);   // 留 2% 余量
+    d *= Math.min(1.6, k * 1.06);                  // 逐步放大，避免过冲
+  }
+  return clamp(d, 16, 160);
+}
+
+function fitViewBegin() {
+  fitView.active = true;
+  fitView.blend = 0;
+  const b = fitStageBounds();
+  fitView.anchor.set(b.cx, 0, b.cz + FIT_VIEW_SHIFT);
+  fitView.dist = fitViewDistance();
+  fit.savedCam = { pitch: cam.targetPitch, dist: cam.targetDist, yaw: cam.targetYaw };
+  cam.targetPitch = FIT_VIEW_PITCH;   // 接近垂直俯视
+  // 俯视时朝向本来无所谓，但摆正到 0 有两个好处：
+  //   1) 取景计算（fitViewFraming）与实际画面一致，不会有看不见的偏斜
+  //   2) 花田的行列与屏幕横竖对齐，玩家好读
+  cam.targetYaw = 0;
+  cam.targetDist = fitView.dist;   // 走特殊通道，绕过 maxDist=28 的限制
+  // 收掉满地的装饰花与花瓣：它们和任务花同色同形，会让人分不清该分哪几朵
+  [decoFlowers.gold, decoFlowers.night].forEach((m) => { if (m) m.visible = false; });
+  if (decoFlowers.petals) decoFlowers.petals.forEach((m) => { m.visible = false; });
+  // 再收掉地面雾平面：俯视时它们会横在相机与花田之间，把画面糊掉
+  if (decoFlowers.fogPlanes) decoFlowers.fogPlanes.forEach((m) => { m.visible = false; });
+  document.body.classList.add('fit-mode');
+}
+
+function fitViewEnd() {
+  fitView.active = false;
+  if (fit.savedCam) {
+    cam.targetPitch = fit.savedCam.pitch;
+    cam.targetDist = fit.savedCam.dist;
+    cam.targetYaw = fit.savedCam.yaw;
+    fit.savedCam = null;
+  }
+  [decoFlowers.gold, decoFlowers.night].forEach((m) => { if (m) m.visible = true; });
+  if (decoFlowers.petals) decoFlowers.petals.forEach((m) => { m.visible = true; });
+  if (decoFlowers.fogPlanes) decoFlowers.fogPlanes.forEach((m) => { m.visible = true; });
+  document.body.classList.remove('fit-mode');
+}
+
 function fitStart() {
   if (fit.active) return;
   // 「划线」在第三章被断电之后，花田就不认你了
@@ -63564,10 +63716,8 @@ function fitStart() {
   fit.active = true;
   fitBuildStage(0);
   $('fitHud').classList.add('show');
-  // 解谜期间把镜头拉高拉远：花田是要俯看的一张"数据表"，不是跟拍
-  fit.savedCam = { pitch: cam.targetPitch, dist: cam.targetDist };
-  cam.targetPitch = 0.95;
-  cam.targetDist = 22;
+  // 切换到"从上往下看、整片花田进画面"的视角
+  fitViewBegin();
 }
 
 function fitStop() {
@@ -63576,11 +63726,9 @@ function fitStop() {
   $('fitHud').classList.remove('show');
   decisionLine.visible = false;
   decisionLine2.visible = false;
-  if (fit.savedCam) {
-    cam.targetPitch = fit.savedCam.pitch;
-    cam.targetDist = fit.savedCam.dist;
-    fit.savedCam = null;
-  }
+  // 关闭后给一段冷却：否则玩家还站在花田里，下一帧 fitTick 就又把面板打开了
+  fit.reEnterAt = performance.now() + 4000;
+  fitViewEnd();
 }
 
 function fitOnSolve() {
@@ -64753,6 +64901,8 @@ canvas.addEventListener('pointermove', (e) => {
 });
 canvas.addEventListener('pointerup', () => { dragging = false; });
 canvas.addEventListener('wheel', (e) => {
+  // 花田解谜期间锁定取景：滚轮会破坏"整片花田进画面"的构图
+  if (fitView.active) { e.preventDefault(); return; }
   cam.targetDist = clamp(cam.targetDist + e.deltaY * 0.012, cam.minDist, cam.maxDist);
   e.preventDefault();
 }, { passive: false });
@@ -65488,7 +65638,8 @@ attention.update = function (dt) {
 const __attnV = new THREE.Vector3();
 function syncAttentionShader() {
   if (!attention.active) return;
-  compMat.uniforms.attnFog.value = attention.fog;
+  // 花田俯视取景时不要那层压暗：它会让整片花田灰掉，花不够跳
+  compMat.uniforms.attnFog.value = fitView.active ? 0 : attention.fog;
   compMat.uniforms.attnFocal.value.set(attention.focal.x, attention.focal.y);
   compMat.uniforms.attnRadius.value = attention.radius;
   // 玩家在屏幕上的位置：注目模式下要保证自己周围始终可见
@@ -69955,13 +70106,23 @@ function updateMovement(dt) {
 function updateCamera(dt) {
   cam.yaw = lerp(cam.yaw, cam.targetYaw, 1 - Math.pow(0.001, dt));
   cam.pitch = lerp(cam.pitch, cam.targetPitch, 1 - Math.pow(0.001, dt));
-  cam.dist = lerp(cam.dist, cam.targetDist, 1 - Math.pow(0.001, dt));
+  // 花田解谜期间走自己的距离通道：它比 cam.maxDist(28) 大，
+  // 否则异或关的检验花永远进不了画面。
+  const wantDist = fitView.active ? fitView.dist : cam.targetDist;
+  cam.dist = lerp(cam.dist, wantDist, 1 - Math.pow(0.001, dt));
 
-  const x = player.position.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
-  const y = player.position.y + Math.sin(cam.pitch) * cam.dist;
-  const z = player.position.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
+  // 解谜期间镜头锚定花田中心（而不是玩家），这样整片花田才会居中进画面
+  const anchor = fitView.active ? fitView.anchor : player.position;
+
+  const x = anchor.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
+  const y = anchor.y + Math.sin(cam.pitch) * cam.dist;
+  const z = anchor.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * cam.dist;
   camera.position.set(x, y, z);
-  camera.lookAt(player.position.x, player.position.y + 1.6, player.position.z);
+  if (fitView.active) {
+    camera.lookAt(anchor.x, anchor.y, anchor.z);
+  } else {
+    camera.lookAt(anchor.x, anchor.y + 1.6, anchor.z);
+  }
 }
 
 // ============================================================
@@ -70073,7 +70234,7 @@ function animate() {
   // （对话框不拆面板：换关卡的那段说明正是在展示新面板）
   if (state.quest === Q_CLASSIFY && !state.flags.classified) {
     const df = player.position.distanceTo(WORLD.garden.flowerCenter);
-    if (df < 26 && !fit.active) fitStart();
+    if (df < 26 && !fit.active && performance.now() > fit.reEnterAt) fitStart();
   }
   fitTick();
 
@@ -70159,6 +70320,15 @@ window.__SHIJIE_CH0__ = {
   drawMinimap,
   minimapArrowAngle,
   MINIMAP_ARROW_MODE,
+  FIT_VIEW_SHIFT,
+  fitBuildStage,
+  fitUpdateLines,
+  fitHudRefresh,
+  fitScore,
+  fitStop,
+  fitView, fitStageBounds, fitViewDistance, fitViewFraming, fitViewBegin, fitViewEnd, FIT_VIEW_PITCH,
+  decoFlowers,
+  fitFlowerGroup, fitFlowers,
   vel,
   THREE,
   renderPost,
