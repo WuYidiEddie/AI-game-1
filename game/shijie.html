@@ -521,6 +521,108 @@
   }
   #fitHud .fit-act span { color: #6f7a8f; font-size: 10px; letter-spacing: .1em; }
 
+  /* ===== 第二问：区域选择（十字把花分到四区之后）===== */
+  #fitQuads {
+    position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+    width: min(460px, 84vw); text-align: center;
+    background: linear-gradient(180deg, rgba(13,20,32,.94), rgba(8,12,22,.9));
+    border: 1px solid rgba(120,200,255,.34); border-radius: 3px;
+    padding: 12px 18px 13px;
+    visibility: hidden; opacity: 0;
+    transition: opacity .35s ease, transform .35s cubic-bezier(.22,.8,.28,1);
+    pointer-events: auto; z-index: 3;
+  }
+  #fitQuads.show { visibility: visible; opacity: 1; }
+  #fitQuads .fq-head {
+    color: #9fd8ff; font-size: 12.5px; letter-spacing: .2em;
+  }
+  #fitQuads .fq-grid {
+    margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px;
+  }
+  #fitQuads .fq-grid button {
+    cursor: pointer; font: inherit; font-size: 12px;
+    color: #cfe8ff; background: rgba(120,200,255,.08);
+    border: 1px solid rgba(120,200,255,.32); border-radius: 2px;
+    padding: 8px 10px; letter-spacing: .08em;
+    transition: background .18s, border-color .18s, color .18s;
+  }
+  #fitQuads .fq-grid button:hover { background: rgba(120,200,255,.2); border-color: #9fd8ff; }
+  #fitQuads .fq-grid button.picked {
+    color: #06121c; background: #9fd8ff; border-color: #eafaff;
+    box-shadow: 0 0 16px rgba(160,220,255,.55);
+  }
+  #fitQuads .fq-foot {
+    margin-top: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  #fitQuads .fq-foot span { color: #8e97ab; font-size: 10.5px; letter-spacing: .1em; text-align: left; }
+  #fitQuads .fq-foot button {
+    cursor: pointer; font: inherit; font-size: 12px; white-space: nowrap;
+    color: #06121c; background: linear-gradient(180deg, #eafaff, #9fd8ff);
+    border: 1px solid #cfe8ff; border-radius: 2px; padding: 7px 18px; letter-spacing: .16em;
+  }
+  #fitQuads .fq-foot button:hover { filter: brightness(1.12); }
+
+  /* ===== 开发者面板（仅 ?dev=1）===== */
+  #devFab {
+    position: absolute; right: 12px; bottom: 12px; z-index: 60;
+    display: none; cursor: pointer; font: inherit; font-size: 11px; letter-spacing: .18em;
+    color: #06121c; background: linear-gradient(180deg, #eafaff, #9fd8ff);
+    border: 1px solid #cfe8ff; border-radius: 2px; padding: 7px 12px;
+  }
+  #devPanel {
+    position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+    width: min(860px, 95vw); max-height: 78vh; z-index: 61;
+    display: none; flex-direction: column;
+    background: linear-gradient(180deg, rgba(10,16,28,.97), rgba(6,10,20,.96));
+    border: 1px solid rgba(120,200,255,.42); border-radius: 3px;
+    padding: 12px 14px 11px; text-align: left;
+  }
+  body.dev-mode #devFab { display: block; }
+  #devPanel.show { display: flex; }
+  #devPanel .dp-head {
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 9px; border-bottom: 1px solid rgba(255,255,255,.09);
+  }
+  #devPanel .dp-title { color: #9fd8ff; font-size: 12px; letter-spacing: .22em; }
+  #devPanel .dp-now { flex: 1; color: #8e97ab; font-size: 11px; }
+  #devPanel .dp-now b { color: #eafff2; font-weight: 500; }
+  #devPanel button {
+    cursor: pointer; font: inherit; font-size: 11px; white-space: nowrap;
+    color: #cfe8ff; background: rgba(120,200,255,.10);
+    border: 1px solid rgba(120,200,255,.34); border-radius: 2px;
+    padding: 5px 10px; letter-spacing: .1em;
+  }
+  #devPanel button:hover { background: rgba(120,200,255,.24); border-color: #9fd8ff; }
+  #devPanel .dp-cols { display: flex; gap: 12px; margin-top: 10px; min-height: 0; flex: 1; }
+  #devPanel .dp-col { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #devPanel .dp-col:last-child { flex: 1.5; }
+  #devPanel .dp-col-head { color: #6f7a8f; font-size: 10px; letter-spacing: .2em; margin-bottom: 6px; }
+  #devPanel .dp-list { overflow-y: auto; max-height: 52vh; padding-right: 4px; }
+  #devPanel .dp-ch {
+    display: block; width: 100%; text-align: left; margin-bottom: 5px;
+    color: #cfe8ff; background: rgba(120,200,255,.06);
+    border: 1px solid rgba(120,200,255,.2); border-radius: 2px;
+    padding: 7px 9px; font-size: 11.5px; letter-spacing: .06em;
+  }
+  #devPanel .dp-ch:hover { background: rgba(120,200,255,.18); }
+  #devPanel .dp-ch.cur { border-color: #9fd8ff; background: rgba(120,200,255,.2); color: #eafaff; }
+  #devPanel .dp-ch span { display: block; color: #7f8b9f; font-size: 10px; margin-top: 3px; }
+  #devPanel .dp-q {
+    display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left;
+    margin-bottom: 4px; padding: 5px 8px; font-size: 11px;
+    color: #b9c6d8; background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.07); border-radius: 2px;
+  }
+  #devPanel .dp-q:hover { background: rgba(120,200,255,.16); color: #eafaff; }
+  #devPanel .dp-q.cur { border-color: #9fd8ff; background: rgba(120,200,255,.2); color: #eafaff; }
+  #devPanel .dp-q.done { opacity: .5; }
+  #devPanel .dp-q i { font-style: normal; color: #6f7a8f; min-width: 20px; }
+  #devPanel .dp-foot {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,.09);
+  }
+  #devPanel .dp-tip { color: #5f6a7d; font-size: 10px; letter-spacing: .08em; }
+
   /* ===== 第二章 · 符号城邦：规则回廊 ===== */
   #ruleHud {
     position: absolute; left: 50%; top: 118px; transform: translateX(-50%) translateY(-6px);
@@ -1133,11 +1235,48 @@
   <div class="fit-acc"><span class="fit-label">判对</span><span class="fit-val" id="fitAcc">0 / 0</span></div>
   <div class="fit-track"><i id="fitBar"></i></div>
   <div class="fit-tip" id="fitTip">按住左键上下拖动，旋转决策边界</div>
-  <div class="fit-act">
-    <button id="fitActBtn" type="button">激活函数：开</button>
-    <span>关掉它，两条线会被压回成一条</span>
+</div>
+
+<!-- 第二问：把花分到四个区域后，让玩家选"哪两个区域是同一种颜色" -->
+<div id="fitQuads">
+  <div class="fq-head">选两个区域 · 它们里面的花是同一种颜色</div>
+  <div class="fq-grid">
+    <button id="fitQuad0" type="button">区域 1</button>
+    <button id="fitQuad1" type="button">区域 2</button>
+    <button id="fitQuad2" type="button">区域 3</button>
+    <button id="fitQuad3" type="button">区域 4</button>
+  </div>
+  <div class="fq-foot">
+    <span id="fitQuadHint">点两个区域</span>
+    <button id="fitQuadOk" type="button">确 认</button>
   </div>
 </div>
+
+<!-- 开发者面板：只在 ?dev=1 时出现（见 DEV_MODE），正式版看不到 -->
+<div id="devPanel">
+  <div class="dp-head">
+    <span class="dp-title">DEV · 章节与任务</span>
+    <span class="dp-now">当前：<b id="dpNow">—</b></span>
+    <button id="dpClose" type="button">收起</button>
+  </div>
+  <div class="dp-cols">
+    <div class="dp-col">
+      <div class="dp-col-head">章节</div>
+      <div class="dp-list" id="dpChapters"></div>
+    </div>
+    <div class="dp-col">
+      <div class="dp-col-head">任务（点一下直接跳）</div>
+      <div class="dp-list" id="dpQuests"></div>
+    </div>
+  </div>
+  <div class="dp-foot">
+    <button id="dpGoto" type="button">跳到当前进度</button>
+    <button id="dpHeal" type="button">回满存在感</button>
+    <button id="dpReset" type="button">重载页面</button>
+    <span class="dp-tip">开面板：右下角「DEV」按钮 或 按 \`（反引号）</span>
+  </div>
+</div>
+<button id="devFab" type="button">DEV</button>
 
 <!-- 第二章 · 符号城邦：规则回廊（自己写 if-then，然后撞上例外） -->
 <div id="ruleHud">
@@ -63370,9 +63509,18 @@ makeFlowerField();
 // （声明必须在用到它的函数之前：这些函数下面就会被调用）
 const fit = {
   stage: -1, solved: false,
-  lineA: 1.35, lineB: 1.35, offA: 0, offB: 0,
-  active: false, dragging: false, which: 'A', grabX: 0, grabY: 0,
-  reEnterAt: 0,      // 关闭后的重入冷却截止（performance.now 毫秒）
+  // 每条线由两个端点定义（花田本地坐标：x 向右，u 向"前" = 世界 -z）。
+  // 玩家拖的就是这两个端点 —— 看得见、拖得动，不用去猜角度和偏置。
+  lines: [
+    { a: { x: -13, u: -9.5 }, b: { x: 13, u: 9.5 } },   // 第一问 / 十字的第一条
+    { a: { x: -13, u: 9.5 }, b: { x: 13, u: -9.5 } },   // 十字的第二条
+  ],
+  active: false, dragging: false, grabX: 0, grabY: 0,
+  dragLine: 0, dragEnd: 'a',   // 当前抓的是"第几条线的哪个端点"
+  reEnterAt: 0,                // 关闭后的重入冷却截止（performance.now 毫秒）
+  // 第二问：十字摆对之后进入"选区域"阶段
+  crossReady: false,
+  picks: [],                   // 玩家选中的区域号（0..3）
 };
 
 // 激活函数（非线性）的开关：整个第一章共用一个状态，
@@ -63385,7 +63533,7 @@ const FIT_STAGES = [
   {
     id: 'and',
     name: '训练 · 一条线',
-    hint: '按住左键上下拖动，旋转决策边界',
+    hint: '拖动这条线两端的圆球：把它摆成能分开两种颜色的位置',
     combo: 'single',
     // 训练集：分界线是过花田中心、方向 (−sinA, cosA) 的直线
     training: [
@@ -63408,7 +63556,7 @@ const FIT_STAGES = [
   {
     id: 'xor',
     name: '检验 · 异或花田',
-    hint: '左键拖第一条线，右键拖第二条线：左右=转角，上下=偏置',
+    hint: '两条线共四个端点都能拖：摆成一个十字，让四个区域里的花各自同色',
     combo: 'xor',
     // 对角反色：过中心的任何一条直线，最多只能分对一半
     training: [
@@ -63494,14 +63642,11 @@ function fitBuildStage(idx) {
     fitFlowerGroup.add(mesh);
     fitFlowers.push({ def: d, mesh });
   });
-  fit.lineA = 1.35;
-  fit.lineB = 1.35;
-  fit.offA = 0;
-  fit.offB = 0;
   fit.stage = idx;
   fit.solved = false;
-  decisionLine.visible = true;
-  decisionLine2.visible = st.combo === 'xor';
+  fit.crossReady = false;
+  fit.picks = [];
+  fitResetLines();
   fitUpdateLines();
   fitHudRefresh();
   // 换了关卡 -> 花的范围变了，重新取景（异或关的检验花在 ±15，比第一关远得多）
@@ -63513,91 +63658,319 @@ function fitBuildStage(idx) {
   }
 }
 
-// 场地坐标 → 与决策线平行的投影。
-// 决策点是过花田中心、方向 (−sinθ, cosθ) 的直线，所以某点在线的哪一侧 = 它在这个方向上的投影符号。
-// 花的世界坐标是 (x, z) = (x, −u)，代入旋转后正好得到 −x·sinθ + u·cosθ。
-function fitSide(ang, x, u) {
-  return -x * Math.sin(ang) + u * Math.cos(ang);
-}
-
-// 判定：A 类必须"留下"，B 类必须"排除"
-// 第一关：一条线（一个感知机）—— 只能切出一个半平面。
-// 第二关：两条线（两层）—— 一条线切一刀、另一条带偏移（偏置 b），
-//         两条合起来能圈住对角上的两块，这是单层永远做不到的。
-function fitVerdict(x, u) {
+// ============================================================
+// 几何与判定
+//   第一问：一条线把花田分成两侧，两侧异色就算对。
+//   第二问：两条线摆成十字，四个半平面组合出四个区域；
+//           摆对之后让玩家选"哪两个区域是同一种颜色"。
+// ============================================================
+function fitResetLines() {
   const st = FIT_STAGES[fit.stage];
-  const a = fitSide(fit.lineA, x, u) - fit.offA > 0;
-  if (st.combo === 'single') return a;          // 第一关：一条线，一个半平面
-  if (!activation.on) {
-    // 激活函数关掉：两层线性叠起来还是一条线性 —— 数学上会塌回一个半平面。
-    // 这里不是随便写个衰减，而是把"塌回去"这件事当真做出来。
-    return fitSide(fit.lineA + fit.lineB, x, u) - (fit.offA + fit.offB) > 0;
+  if (st.combo === 'single') {
+    // 第一问：一条斜线斜着摆在花田上，两端都露在花丛外面 —— 一眼看得见它
+    fit.lines[0].a.x = -14; fit.lines[0].a.u = -11;
+    fit.lines[0].b.x = 14; fit.lines[0].b.u = 11;
+  } else {
+    // 第二问：先摆一个"歪且偏"的十字 —— 四区必然混色，玩家要把它摆正、摆到花心上。
+    // （实测这组初始 crossSplits()=false；两条线大致转到一横一竖、靠近花心就解开了）
+    fit.lines[0].a.x = -29.2; fit.lines[0].a.u = 20;
+    fit.lines[0].b.x = 39.2; fit.lines[0].b.u = 4.25;
+    fit.lines[1].a.x = -15.8; fit.lines[1].a.u = -39.3;
+    fit.lines[1].b.x = 12.2; fit.lines[1].b.u = 26.05;
   }
-  const b = fitSide(fit.lineB, x, u) - fit.offB > 0;
-  return a && b;                                // 两条同时成立：多层里那一步「与」
+  fit.crossReady = false;
+  fit.picks = [];
 }
 
-function fitScore(set) {
-  let ok = 0;
-  set.forEach((d) => { if (fitVerdict(d.x, d.u) === (d.r === 1)) ok++; });
-  return ok;
+// 点在线的哪一侧：叉积（>0 / <0，0 表示压线）
+function sideOf(line, x, u) {
+  const ax = line.a.x, au = line.a.u;
+  const bx = line.b.x, bu = line.b.u;
+  return (bx - ax) * (u - au) - (bu - au) * (x - ax);
+}
+
+// 两端点离得够开吗（否则退化成一个点，线没意义）
+function lineValid(line) {
+  return Math.hypot(line.b.x - line.a.x, line.b.u - line.a.u) > 1.5;
+}
+
+// 这条线把两种颜色彻底分到两侧了吗
+function lineSplits(line) {
+  if (!lineValid(line)) return false;
+  const st = FIT_STAGES[fit.stage];
+  const all = [...st.training, ...st.verify];
+  let aPos = 0, aNeg = 0, bPos = 0, bNeg = 0;
+  all.forEach((d) => {
+    const s = sideOf(line, d.x, d.u);
+    if (s === 0) { aPos++; bPos++; return; }   // 压在线上：不判错，但也不算分到两侧
+    if (d.r === 1) { if (s > 0) aPos++; else aNeg++; }
+    else { if (s > 0) bPos++; else bNeg++; }
+  });
+  const aOneSide = (aPos === 0 || aNeg === 0);
+  const bOneSide = (bPos === 0 || bNeg === 0);
+  if (!aOneSide || !bOneSide) return false;
+  // 两边必须在不同侧
+  const aSide = aPos > aNeg ? 1 : -1;
+  const bSide = bPos > bNeg ? 1 : -1;
+  return aSide !== bSide;
+}
+
+// 区域编号：(line0 的侧, line1 的侧) 的四种组合
+const QUAD_COMBOS = [[1, -1], [1, 1], [-1, -1], [-1, 1]];
+
+// 哪两个区域是"对角"？
+// 注意：不能想当然以为"编号差 2 就是对角" —— QUAD_COMBOS 里 0=(+,-)、3=(-,+)
+// 才是真正相对的那一对（两个坐标符号都相反）。这里按定义算出来，别写死。
+// 两条垂直的线把平面分成四块，其中对角两块的法线方向互为相反数，
+// 于是对角的那一对正好是"两条边界线的法线都要翻号"的组合。
+const QUAD_DIAGONALS = (() => {
+  const oppose = (a, b) => a[0] === -b[0] && a[1] === -b[1];
+  const pairs = [];
+  for (let i = 0; i < 4; i++) {
+    for (let j = i + 1; j < 4; j++) {
+      if (oppose(QUAD_COMBOS[i], QUAD_COMBOS[j])) pairs.push([i, j]);
+    }
+  }
+  return pairs;
+})();
+
+function quadOfPoint(x, u) {
+  const s0 = sideOf(fit.lines[0], x, u) >= 0 ? 1 : -1;
+  const s1 = sideOf(fit.lines[1], x, u) >= 0 ? 1 : -1;
+  for (let k = 0; k < QUAD_COMBOS.length; k++) {
+    if (QUAD_COMBOS[k][0] === s0 && QUAD_COMBOS[k][1] === s1) return k;
+  }
+  return 0;
+}
+
+function isDiagonalPair(a, b) {
+  return QUAD_DIAGONALS.some((p) => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a));
+}
+
+// 十字摆对了吗：四个区域都非空且各自同色，而且每一对对角同色、相邻异色
+function crossSplits() {
+  if (!lineValid(fit.lines[0]) || !lineValid(fit.lines[1])) return false;
+  const st = FIT_STAGES[fit.stage];
+  const all = [...st.training, ...st.verify];
+  const buckets = [[], [], [], []];
+  all.forEach((d) => buckets[quadOfPoint(d.x, d.u)].push(d.r));
+  for (const b of buckets) {
+    if (!b.length) return false;
+    if (b.some((r) => r !== b[0])) return false;      // 区域内部必须同色
+  }
+  // 对角同色、相邻异色（对角的定义见 QUAD_DIAGONALS，不写死编号）
+  return QUAD_DIAGONALS.every(([i, j]) => buckets[i][0] === buckets[j][0])
+    && QUAD_COMBOS.every((_, i) => QUAD_COMBOS.every((__, j) => {
+      if (i >= j || isDiagonalPair(i, j)) return true;
+      return buckets[i][0] !== buckets[j][0];
+    }));
+}
+
+// 玩家选的两个区域合法吗：必须是一对对角，且这两个同色、另一对对角也同色
+function picksCorrect() {
+  if (fit.picks.length !== 2) return false;
+  const [p1, p2] = fit.picks;
+  if (p1 === p2) return false;
+  if (!isDiagonalPair(p1, p2)) return false;
+  const st = FIT_STAGES[fit.stage];
+  const all = [...st.training, ...st.verify];
+  const colorOf = (q) => {
+    const rs = all.filter((d) => quadOfPoint(d.x, d.u) === q).map((d) => d.r);
+    return rs.length ? rs[0] : null;
+  };
+  const c1 = colorOf(p1), c2 = colorOf(p2);
+  if (c1 === null || c2 === null || c1 !== c2) return false;
+  const other = QUAD_DIAGONALS.find(([i, j]) => !(i === p1 && j === p2) && !(i === p2 && j === p1));
+  if (!other) return false;
+  const o1 = colorOf(other[0]), o2 = colorOf(other[1]);
+  return o1 !== null && o2 !== null && o1 === o2 && o1 !== c1;
+}
+
+// 每朵花"判对了没有"：第一问看是否在线该在的一侧；第二问看它所在区域是否被选中
+function fitFlowerOk(def) {
+  const st = FIT_STAGES[fit.stage];
+  if (st.combo === 'single') {
+    return lineSplits(fit.lines[0]) ? true : (sideOf(fit.lines[0], def.x, def.u) >= 0) === (def.r === 1);
+  }
+  if (!crossSplits()) return false;
+  const q = quadOfPoint(def.x, def.u);
+  if (fit.picks.length === 0) return true;          // 十字摆好了但还没选：先都亮着
+  const picked = fit.picks.indexOf(q) >= 0;
+  return picked === (def.r === 1) || (!picked && def.r !== 1);
+}
+
+// ============================================================
+// 把线画出来：一条发光的带 + 两端可拖的大手柄
+// ============================================================
+const lineMeshes = [];
+{
+  const style = [[0x9fffc8, 0x6ef0b0], [0xffd27d, 0xffb04a]];
+  style.forEach(([c1, c2]) => {
+    const group = new THREE.Group();
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(1, 0.22, 0.62),
+      new THREE.MeshBasicMaterial({ color: c1, transparent: true, opacity: 0.92 })
+    );
+    bar.position.y = 0.42;
+    group.add(bar);
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 2.8),
+      new THREE.MeshBasicMaterial({ color: c2, transparent: true, opacity: 0.2, depthWrite: false })
+    );
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.y = 0.14;
+    group.add(glow);
+    group.visible = false;
+    gardenGroup.add(group);
+    lineMeshes.push({ group, bar, glow });
+  });
+}
+
+const fitHandles = [];
+{
+  const mk = (color) => {
+    const g = new THREE.Group();
+    const core = new THREE.Mesh(
+      new THREE.SphereGeometry(1.0, 16, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 })
+    );
+    core.position.y = 1.0;
+    g.add(core);
+    const halo = new THREE.Mesh(
+      new THREE.SphereGeometry(1.8, 16, 12),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.2, depthWrite: false })
+    );
+    halo.position.y = 1.0;
+    g.add(halo);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.6, 0.13, 8, 28),
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.14;
+    g.add(ring);
+    g.visible = false;
+    gardenGroup.add(g);
+    return g;
+  };
+  for (let li = 0; li < 2; li++) {
+    for (let ei = 0; ei < 2; ei++) {
+      const h = mk(li === 0 ? 0x7dffc0 : 0xffd27d);
+      h.userData.lineIndex = li;
+      h.userData.end = ei === 0 ? 'a' : 'b';
+      fitHandles.push(h);
+    }
+  }
 }
 
 function fitUpdateLines() {
-  decisionLine.rotation.y = fit.lineA;
-  decisionLine2.rotation.y = fit.lineB;
-  // 偏移（偏置 b）：沿各自的法线方向平移
-  const ax = Math.cos(fit.lineA), az = -Math.sin(fit.lineA);
-  decisionLine.position.set(
-    WORLD.garden.flowerCenter.x + ax * fit.offA, 0.1, WORLD.garden.flowerCenter.z + az * fit.offA
-  );
-  const bx = Math.cos(fit.lineB), bz = -Math.sin(fit.lineB);
-  decisionLine2.position.set(
-    WORLD.garden.flowerCenter.x + bx * fit.offB, 0.1, WORLD.garden.flowerCenter.z + bz * fit.offB
-  );
+  const c = WORLD.garden.flowerCenter;
+  const showSecond = FIT_STAGES[fit.stage] && FIT_STAGES[fit.stage].combo === 'xor';
+  fit.lines.forEach((line, li) => {
+    const m = lineMeshes[li];
+    const visible = fit.active && (li === 0 || showSecond);
+    m.group.visible = visible;
+    if (!visible) return;
+    const ax = c.x + line.a.x, az = c.z - line.a.u;
+    const bx = c.x + line.b.x, bz = c.z - line.b.u;
+    const len = Math.max(0.001, Math.hypot(bx - ax, bz - az));
+    m.group.position.set((ax + bx) / 2, 0.12, (az + bz) / 2);
+    m.group.rotation.y = -Math.atan2(bz - az, bx - ax);
+    m.bar.scale.x = len;
+    m.glow.scale.x = len;
+  });
+  fitHandles.forEach((h) => {
+    const li = h.userData.lineIndex;
+    const visible = fit.active && (li === 0 || showSecond) && !fit.crossReady;
+    h.visible = visible;
+    if (!visible) return;
+    const e = fit.lines[li][h.userData.end];
+    h.position.set(c.x + e.x, 0, c.z - e.u);
+  });
+}
+
+// ============================================================
+// HUD：分数 / 提示 / 第二问的区域按钮
+// ============================================================
+function fitQuadrantUI() {
+  const box = $('fitQuads');
+  if (!box) return;
+  const st = FIT_STAGES[fit.stage];
+  const need = st.combo === 'xor' && fit.crossReady && !fit.solved;
+  box.classList.toggle('show', !!need);
+  if (!need) return;
+  // 每个区域显示它里面有几朵花；选中态高亮
+  const all = [...st.training, ...st.verify];
+  const counts = [0, 0, 0, 0];
+  all.forEach((d) => { counts[quadOfPoint(d.x, d.u)] += 1; });
+  for (let q = 0; q < 4; q++) {
+    const btn = $('fitQuad' + q);
+    if (!btn) continue;
+    const chosen = fit.picks.indexOf(q) >= 0;
+    btn.classList.toggle('picked', chosen);
+    btn.textContent = '区域 ' + (q + 1) + '（' + counts[q] + ' 朵）';
+  }
+  const hint = $('fitQuadHint');
+  if (hint) {
+    hint.textContent = fit.picks.length < 2
+      ? '点两个区域：它们里面的花应该是同一种颜色（' + fit.picks.length + ' / 2 已选）'
+      : '按「确认」看看对不对';
+  }
 }
 
 function fitHudRefresh() {
   const st = FIT_STAGES[fit.stage];
-  const train = st.training, verify = st.verify;
-  const okTrain = fitScore(train);
-  const okVerify = fitScore(verify);
-  const total = train.length + verify.length;
-  const ok = okTrain + okVerify;
   const hud = $('fitHud');
   if (!hud) return;
-  $('fitStage').textContent = st.name;
-  $('fitAcc').textContent = ok + ' / ' + total;
-  $('fitBar').style.width = Math.round((ok / total) * 100) + '%';
-  hud.classList.toggle('good', ok === total);
-  hud.classList.toggle('bad', ok < total);
-  $('fitTip').textContent = st.hint;
-  // 每朵花按当前判定亮暗：判对的亮着，判错的发暗
+  const single = st.combo === 'single';
+  const ok = single ? lineSplits(fit.lines[0]) : crossSplits();
+  $('fitStage').textContent = single ? '第一问 · 拖两端摆一条线' : '第二问 · 摆一个十字';
+  // 第一问只报"分开了没有"；第二问报十字是否摆对，再报选区域
+  const valEl = $('fitAcc');
+  if (valEl) valEl.textContent = ok ? (single ? '分开了' : '十字好了') : '还没分开';
+  const bar = $('fitBar');
+  if (bar) bar.style.width = ok ? '100%' : '0%';
+  hud.classList.toggle('good', ok);
+  hud.classList.toggle('bad', !ok);
+  if (fit.picks.length === 2) {
+    $('fitTip').textContent = picksCorrect() ? '就是这两个——按「确认」' : '这两个区域里不是同一种颜色，换一对试试';
+  } else if (fit.crossReady) {
+    $('fitTip').textContent = '十字摆好了。点两个区域，选出它们里面的花是同一种颜色的那两个。';
+  } else {
+    $('fitTip').textContent = st.hint;
+  }
+  // 每朵花按当前判定亮暗
   fitFlowers.forEach((f) => {
-    const right = fitVerdict(f.def.x, f.def.u) === (f.def.r === 1);
+    const right = fitFlowerOk(f.def);
     f.mesh.traverse((o) => {
       if (o.material && o.material.emissiveIntensity !== undefined) {
         o.material.emissiveIntensity = right ? (f.def.verify ? 1.9 : 1.3) : 0.08;
       }
     });
   });
-  return { ok, total, okTrain, okVerify };
+  // 手柄的显隐跟 crossReady 有关，每次刷新都同步一遍
+  // （否则玩家松手进入"选区域"之后，四个手柄还会留在场上）
+  fitHandles.forEach((h) => {
+    const li = h.userData.lineIndex;
+    const showSecond = FIT_STAGES[fit.stage].combo === 'xor';
+    h.visible = fit.active && (li === 0 || showSecond) && !fit.crossReady;
+  });
+  fitQuadrantUI();
+  return { ok, total: 1 };
 }
 
 // ============================================================
-// 花田解谜的"俯视视角"：整张花田一屏装下
+// 花田解谜的「俯视视角」：整张花田一屏装下
 // ------------------------------------------------------------
-// 之前镜头是绕玩家转的，而且 dist 上限 28，异或关的检验花在 ±15，
-// 玩家根本没法在一个画面里看全所有要分类的花，只能盲拖。
-// 这里改成：
-//   · 镜头锚点从"玩家"换成"花田中心"
-//   · 俯角拉到接近垂直（真·从上往下看）
-//   · 距离按当前关卡所有花的包围盒自动算，保证连最远的检验花也在画面内
+// 镜头原本绕玩家转、dist 上限 28，而检验花在 ±15，玩家没法一屏看全，
+// 只能盲拖。这里改成：锚点从玩家换成花田包围盒中心，俯角拉到近垂直，
+// 距离按"把每朵花都投进安全区"迭代求出。
 // ============================================================
 const FIT_VIEW_PITCH = 1.35;   // 花田解谜的俯角：接近垂直俯视
 // 锚点再往远处挪一点（yaw=0 时即 +z），让整片花田在画面里下移，
 // 避开顶部那块解谜面板（实测不挪的话有 3 朵花正好被面板盖住）。
 const FIT_VIEW_SHIFT = 0;   // 面板已挪到底部，花田重新居中，无需偏移
+const FIT_VIEW_BIAS_Y = 0.10;   // 花田在画面里整体略上移，避开底部解谜面板
 const fitView = { active: false, anchor: new THREE.Vector3(), dist: 34, blend: 0 };
 
 // 当前关卡所有花（含检验花）的包围盒；没有花时退回花田中心
@@ -63614,8 +63987,7 @@ function fitStageBounds() {
     minZ = Math.min(minZ, wz); maxZ = Math.max(maxZ, wz);
   });
   if (!isFinite(minX)) return { cx, cz, halfX: 12, halfZ: 14 };
-  // 加上花本身与决策线的余量
-  const pad = 7;
+  const pad = 7;                     // 花本身与决策线的余量
   return {
     cx: (minX + maxX) / 2,
     cz: (minZ + maxZ) / 2,
@@ -63627,7 +63999,6 @@ function fitStageBounds() {
 // 取景距离：按真实相机基做投影迭代，直到每一朵花都落在安全区内。
 // 不用解析近似 —— 相机随距离变远时各点的相对深度也在变，"ndc ∝ 1/d"
 // 这个比例关系并不成立（实测会偏小 15%，把最上/最下的花切出画面）。
-const FIT_VIEW_BIAS_Y = 0.10;   // 花田在画面里整体略上移，避开底部解谜面板
 function fitViewFraming(d, safeX, safeY) {
   const b = fitStageBounds();
   const st = FIT_STAGES[fit.stage] || FIT_STAGES[0];
@@ -63637,7 +64008,6 @@ function fitViewFraming(d, safeX, safeY) {
   const tanV = Math.tan(fov / 2);
   const tanH = tanV * aspect;
   const sP = Math.sin(FIT_VIEW_PITCH), cP = Math.cos(FIT_VIEW_PITCH);
-  // 相机在锚点后方（相对 fwd 的反方向），fwd = (0, -sinP, -cosP)
   const camX = b.cx;
   const camY = 0 + sP * d;
   const camZ = b.cz + FIT_VIEW_SHIFT + cP * d;   // 锚点已下移，相机位置同步
@@ -63652,7 +64022,7 @@ function fitViewFraming(d, safeX, safeY) {
     const upv = py * cP - pz * sP;
     const rightv = px;
     if (depth <= 1) { k = Math.max(k, 99); return; }
-    // 纵向偏置：把"可接受的中心"从 0 抬到 BIAS_Y（屏幕上方为 +y）
+    // 纵向偏置：把"可接受的中心"从 0 抬到 FIT_VIEW_BIAS_Y（屏幕上方为 +y）
     const upN = upv / (depth * tanV);
     const overY = Math.abs(upN - FIT_VIEW_BIAS_Y) / safeY;
     k = Math.max(k, Math.abs(rightv) / (depth * tanH * safeX), overY);
@@ -63662,8 +64032,7 @@ function fitViewFraming(d, safeX, safeY) {
 
 function fitViewDistance() {
   // 游戏实际 fov=50（比常见 55 窄），安全区必须收紧，否则边上的花仍会被切。
-  // 纵向收紧得更多：画面下缘有解谜面板（bottom:14px，约占 y 614~786 @800 高），
-  // 上缘有罗盘/目标 chip，所以花田只占中间那条带（约 NDC -0.72 ~ +0.52）。
+  // 纵向收紧得更多：画面下缘有解谜面板（bottom:14px），上缘有罗盘/目标 chip。
   const SAFE_X = 0.78, SAFE_Y = 0.62;
   let d = 24;
   for (let it = 0; it < 24; it++) {
@@ -63716,6 +64085,8 @@ function fitStart() {
   fit.active = true;
   fitBuildStage(0);
   $('fitHud').classList.add('show');
+  const qb = $('fitQuads');
+  if (qb) qb.classList.remove('show');
   // 切换到"从上往下看、整片花田进画面"的视角
   fitViewBegin();
 }
@@ -63724,8 +64095,10 @@ function fitStop() {
   fit.active = false;
   fit.dragging = false;
   $('fitHud').classList.remove('show');
-  decisionLine.visible = false;
-  decisionLine2.visible = false;
+  const qb = $('fitQuads');
+  if (qb) qb.classList.remove('show');
+  lineMeshes.forEach((m) => { m.group.visible = false; });
+  fitHandles.forEach((h) => { h.visible = false; });
   // 关闭后给一段冷却：否则玩家还站在花田里，下一帧 fitTick 就又把面板打开了
   fit.reEnterAt = performance.now() + 4000;
   fitViewEnd();
@@ -63763,55 +64136,34 @@ function fitAdvanceStage() {
     { name: '露丝', text: '把刚才那条线拿去用，看看还灵不灵。' },
     { name: state.name, text: '（那几朵花比练习题大一点，位置也偏。……试试吧。）' },
   ], () => {
-    // 新花出现后如果当前线恰好全对，也算过；否则玩家继续拖
-    const r = fitHudRefresh();
-    if (r && r.ok === r.total) fitOnSolve();
+    // 换关之后端点已经重置，重新画一遍并刷新提示
+    fitUpdateLines();
+    fitHudRefresh();
   });
 }
 
-const decisionLine = new THREE.Group();
-{
-  const bar = new THREE.Mesh(
-    new THREE.BoxGeometry(28, 0.18, 0.55),
-    new THREE.MeshBasicMaterial({ color: 0x9fffc8, transparent: true, opacity: 0.85 })
-  );
-  bar.position.y = 0.35;
-  decisionLine.add(bar);
-  const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(28, 2.2),
-    new THREE.MeshBasicMaterial({ color: 0x6ef0b0, transparent: true, opacity: 0.18, depthWrite: false })
-  );
-  glow.rotation.x = -Math.PI / 2;
-  glow.position.y = 0.12;
-  decisionLine.add(glow);
+// 第二问：十字摆对了就进入"选区域"，选完按确认
+function fitConfirmPicks() {
+  if (fit.solved) return;
+  if (!fit.crossReady) {
+    showToast('还没摆好', '先把十字移到花心，让四个区域里的花各自同色');
+    return;
+  }
+  if (fit.picks.length !== 2) {
+    showToast('选两个区域', '点两个区域，它们里面的花应该是同一种颜色');
+    return;
+  }
+  if (picksCorrect()) {
+    fitOnSolve();
+  } else {
+    showToast('再想想', '这两个区域里的花不是同一种颜色');
+    fit.picks = [];
+    fitHudRefresh();
+  }
 }
-decisionLine.position.copy(WORLD.garden.flowerCenter);
-decisionLine.position.y = 0.1;
-decisionLine.visible = false;
-gardenGroup.add(decisionLine);
 
-// 第二条决策边界：异或关卡才出现（两条线合起来才能圈住对角）
-const decisionLine2 = new THREE.Group();
-{
-  const bar = new THREE.Mesh(
-    new THREE.BoxGeometry(28, 0.18, 0.55),
-    new THREE.MeshBasicMaterial({ color: 0xffd27d, transparent: true, opacity: 0.8 })
-  );
-  bar.position.y = 0.35;
-  decisionLine2.add(bar);
-  const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(28, 2.2),
-    new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.16, depthWrite: false })
-  );
-  glow.rotation.x = -Math.PI / 2;
-  glow.position.y = 0.12;
-  decisionLine2.add(glow);
-}
-decisionLine2.position.copy(WORLD.garden.flowerCenter);
-decisionLine2.position.y = 0.1;
-decisionLine2.visible = false;
-gardenGroup.add(decisionLine2);
-
+// 旧的 decisionLine / decisionLine2（旋转角 + 法线偏置那套）已由上面的
+// lineMeshes（两个端点定义的线）取代，这里不再创建。
 // XOR plot — four "impossible" flowers on corners
 const xorGroup = new THREE.Group();
 {
@@ -65155,6 +65507,117 @@ function resumeFromQuest() {
   resumeChapterEntrance(info.ch);
 }
 
+// ============================================================
+// 开发者面板：列出全部章节与任务，可一键跳转
+// 仅在 ?dev=1 时激活（见文件末尾的 DEV_MODE），正式版完全不可见。
+// ============================================================
+const DEV_MODE = /[?&]dev=1\b/.test(location.search);
+
+// 章节表：把任务号区间和"跳到该章从哪一步开始"对上
+const DEV_CHAPTERS = CHAPTER_INFO.map((c) => ({
+  ch: c.ch, name: c.name, from: c.from, to: c.to,
+}));
+
+function devJumpToQuest(qid) {
+  qid = clamp(qid | 0, 0, QUESTS.length - 1);
+  const target = QUEST_TARGETS[qid];
+  // 跳转会绕过大量前置条件，把常见的门槛标记先设上，免得卡在"某开关没开"
+  state.flags.sawLetter = true;
+  state.flags.ch1Opened = true;
+  state.flags.ch1Started = true;
+  if (qid > Q_GREENHOUSE) state.flags.fireStarted = true;
+  if (qid > Q_FIRE) state.flags.plates = 3;
+  if (qid > Q_CITY) state.flags.codexRead = true;
+  if (qid > Q_EXCEPTION) state.flags.exceptionRead = true;
+  if (qid > Q_CLASSIFY) state.flags.classified = true;
+  state.phase = 'play';
+  state.mode = 'walk';
+  titleEl.classList.add('hide');
+  introEl.classList.remove('show');
+  completeEl.classList.remove('show');
+  nameModal.classList.remove('show');
+  gateModal.classList.remove('show');
+  hudEl.classList.add('on');
+  attention.active = false;
+  document.body.classList.remove('attn-mode');
+  const hb = $('heartbeat');
+  if (hb) hb.classList.remove('show');
+  setQuest(qid);
+  // 站到该任务的目标点旁边，方便直接看效果
+  if (target) {
+    const t = target.pos();
+    player.position.set(t.x, 0, t.z + 6);
+    cam.targetYaw = 0;
+    cam.targetPitch = 0.62;
+  }
+  updateGoalMarker();
+  updateNavigation();
+  updatePlayerUI();
+  showToast('DEV 跳转', '第 ' + (qid + 1) + ' / ' + QUESTS.length + ' 步 · ' + (QUESTS[qid] ? QUESTS[qid].title : ''));
+  devRefresh();
+}
+
+function devRefresh() {
+  if (!DEV_MODE) return;
+  const now = $('dpNow');
+  if (now) {
+    const c = chapterInfoFor(state.quest);
+    now.textContent = c.name + ' · ' + (QUESTS[state.quest] ? QUESTS[state.quest].title : '') + '　（任务 ' + state.quest + '）';
+  }
+  const chBox = $('dpChapters');
+  if (chBox) {
+    chBox.innerHTML = '';
+    DEV_CHAPTERS.forEach((c) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dp-ch' + (chapterInfoFor(state.quest).ch === c.ch ? ' cur' : '');
+      b.innerHTML = c.name + '<span>任务 ' + c.from + '–' + c.to + '　共 ' + (c.to - c.from + 1) + ' 步</span>';
+      b.addEventListener('click', () => devJumpToQuest(c.from));
+      chBox.appendChild(b);
+    });
+  }
+  const qBox = $('dpQuests');
+  if (qBox) {
+    qBox.innerHTML = '';
+    QUESTS.forEach((q, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'dp-q' + (state.quest === i ? ' cur' : (i < state.quest ? ' done' : ''));
+      b.innerHTML = '<i>' + i + '</i><span>第' + q.chapter + '章 · ' + q.title + '</span>';
+      b.addEventListener('click', () => devJumpToQuest(i));
+      qBox.appendChild(b);
+    });
+  }
+}
+
+function devInit() {
+  if (!DEV_MODE) return;
+  document.body.classList.add('dev-mode');
+  const panel = $('devPanel');
+  const fab = $('devFab');
+  const toggle = (on) => {
+    if (!panel) return;
+    const want = (on === undefined) ? !panel.classList.contains('show') : on;
+    panel.classList.toggle('show', want);
+    if (want) devRefresh();
+  };
+  if (fab) fab.addEventListener('click', () => toggle());
+  const close = $('dpClose');
+  if (close) close.addEventListener('click', () => toggle(false));
+  const goto = $('dpGoto');
+  if (goto) goto.addEventListener('click', () => devJumpToQuest(state.quest));
+  const heal = $('dpHeal');
+  if (heal) heal.addEventListener('click', () => { setExistence(1); devRefresh(); });
+  const reset = $('dpReset');
+  if (reset) reset.addEventListener('click', () => location.reload());
+  window.addEventListener('keydown', (e) => {
+    if (e.key === '`' || e.key === '~') { e.preventDefault(); toggle(); }
+    if (e.key === 'Escape') toggle(false);
+  });
+  toggle(true);
+  devRefresh();
+}
+
 // 各章的"接续点"：传送到该章入口并把任务设到能继续的那一步
 function resumeChapterEntrance(ch) {
   if (ch === 0) {
@@ -66348,7 +66811,7 @@ function syncActivationVisual() {
     veil.material.opacity = activation.on ? 0.28 : 0.55;
   }
   if (light) light.color.setHex(activation.on ? 0x8fd4ff : 0xff5a4a);
-  const btn = $('fitActBtn');
+  const btn = $('fitActBtn');   // 花田面板上的按钮已撤掉，这里保留容错
   if (btn) {
     btn.textContent = '激活函数：' + (activation.on ? '开' : '关');
     btn.classList.toggle('off', !activation.on);
@@ -66359,7 +66822,7 @@ function syncActivationVisual() {
 function toggleActivation(fromPlayer) {
   activation.on = !activation.on;
   syncActivationVisual();
-  if (fit.active) fitHudRefresh();
+  if (fit.active) fitHudRefresh();   // 面板已不显示该开关，这里只是保持刷新一致
   if (!activation.on && fromPlayer) {
     activation.triedOff = true;
     showToast('非线性：关', '两层线性叠起来，还是一条线性');
@@ -67742,6 +68205,8 @@ function showLocation(main, sub) {
   showToast(main, sub, 3600);
 }
 
+devInit();   // 只在 ?dev=1 时真正做事
+
 $('btnReplay').addEventListener('click', () => location.reload());
 $('btnCh1').addEventListener('click', () => {
   // 按真实进度派发：以前这里只写到第二章，第三章往后一律"跟随金色光点"，
@@ -67795,73 +68260,121 @@ function startChapter1() {
   updatePlayerUI();
 }
 
-// ============ 可分花田：拟合—检验 的鼠标操作 ============
-// 左键 = 第一条线（切一刀）；右键 = 第二条线（带偏置 b 的那一刀）。
-// 两条线各有自己的自由度 —— 这不是手感选择：单条线只有一个可调量，
-// 数学上就到不了异或的解，必须让玩家手里真的有两个旋钮。
+// ============ 可分花田：拖动直线的两端 ============
+// 第一问一条线两个端点；第二问两条线四个端点。
+// 抓取用射线打手柄，落点用"屏幕射线与地面 y=0 平面求交"，
+// 这样在俯视取景下拖动手感和看到的位置完全一致。
 let classifyDrag = null;
 
 canvas.addEventListener('contextmenu', (e) => { if (fit.active) e.preventDefault(); });
 
-function fitBeginDrag(which, e) {
-  fit.dragging = true;
-  fit.which = which;
-  fit.grabX = e.clientX;
-  fit.grabY = e.clientY;
-  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
-  canvas.style.cursor = 'grabbing';
+const __fitRay = new THREE.Raycaster();
+const __fitNdc = new THREE.Vector2();
+const __fitPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const __fitHit = new THREE.Vector3();
+
+// 屏幕坐标 -> 花田本地 (x, u)
+function fitScreenToLocal(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  __fitNdc.x = ((clientX - r.left) / r.width) * 2 - 1;
+  __fitNdc.y = -((clientY - r.top) / r.height) * 2 + 1;
+  __fitRay.setFromCamera(__fitNdc, camera);
+  if (!__fitRay.ray.intersectPlane(__fitPlane, __fitHit)) return null;
+  const c = WORLD.garden.flowerCenter;
+  return { x: __fitHit.x - c.x, u: c.z - __fitHit.z };
+}
+
+// 抓手柄：返回 {line, end} 或 null
+function fitPickHandle(clientX, clientY) {
+  const r = canvas.getBoundingClientRect();
+  __fitNdc.x = ((clientX - r.left) / r.width) * 2 - 1;
+  __fitNdc.y = -((clientY - r.top) / r.height) * 2 + 1;
+  __fitRay.setFromCamera(__fitNdc, camera);
+  const visible = fitHandles.filter((h) => h.visible);
+  const hits = __fitRay.intersectObjects(visible, true);
+  if (!hits.length) return null;
+  let o = hits[0].object;
+  while (o && o.userData.lineIndex === undefined) o = o.parent;
+  if (!o) return null;
+  return { line: o.userData.lineIndex, end: o.userData.end };
 }
 
 canvas.addEventListener('pointerdown', (e) => {
   if (!fit.active || state.mode !== 'walk') return;
-  const st = FIT_STAGES[fit.stage];
-  if (e.button === 0) fitBeginDrag('A', e);
-  else if (e.button === 2 && st.combo === 'xor') fitBeginDrag('B', e);
+  if (fit.crossReady) return;                 // 选区域阶段不再拖线
+  if (e.button !== 0 && e.button !== 2) return;
+  const pick = fitPickHandle(e.clientX, e.clientY);
+  if (!pick) return;
+  fit.dragging = true;
+  fit.dragLine = pick.line;
+  fit.dragEnd = pick.end;
+  fit.grabX = e.clientX;
+  fit.grabY = e.clientY;
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+  canvas.style.cursor = 'grabbing';
 });
 
 canvas.addEventListener('pointerup', (e) => {
-  if (fit.dragging) {
-    fit.dragging = false;
-    canvas.style.cursor = '';
-    try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
-    const st = FIT_STAGES[fit.stage];
-    if (st.combo === 'single') {
-      // 第一关只要求"练习册全对"→ 进入检验关
-      if (fitScore(st.training) === st.training.length) fitAdvanceStage();
-      else fitHudRefresh();
-    } else if (fitScore([...st.training, ...st.verify]) === st.training.length + st.verify.length && !fit.solved) {
-      fitOnSolve();
+  if (!fit.dragging) return;
+  fit.dragging = false;
+  canvas.style.cursor = '';
+  try { canvas.releasePointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+  const st = FIT_STAGES[fit.stage];
+  if (st.combo === 'single') {
+    if (lineSplits(fit.lines[0])) fitAdvanceStage();
+    else fitHudRefresh();
+  } else {
+    // 十字摆对 -> 进入选区域阶段
+    if (!fit.crossReady && crossSplits()) {
+      fit.crossReady = true;
+      fit.picks = [];
+      showToast('十字摆好了', '现在点两个区域：选出里面的花同色的那两个');
     }
+    fitUpdateLines();
+    fitHudRefresh();
   }
-  classifyDrag = null;
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (!fit.active || !fit.dragging || state.mode !== 'walk') return;
-  const dx = e.clientX - fit.grabX;
-  const dy = e.clientY - fit.grabY;
-  fit.grabX = e.clientX;
-  fit.grabY = e.clientY;
-  // 每条线两个自由度：左右拖 = 转角，上下拖 = 偏置 b。
-  // 单条线只有"转角"这一根旋钮是转不出异或的：偏置必须能调。
-  const dAng = dx * 0.006;
-  const dBias = dy * 0.055;
-  if (fit.which === 'A') {
-    fit.lineA -= dAng;
-    fit.offA += dBias;
-  } else {
-    fit.lineB -= dAng;
-    fit.offB += dBias;
+  if (!fit.active || state.mode !== 'walk') return;
+  if (fit.dragging) {
+    const loc = fitScreenToLocal(e.clientX, e.clientY);
+    if (loc) {
+      const line = fit.lines[fit.dragLine];
+      line[fit.dragEnd].x = clamp(loc.x, -40, 40);
+      line[fit.dragEnd].u = clamp(loc.u, -40, 40);
+      fitUpdateLines();
+      fitHudRefresh();
+    }
+    fit.grabX = e.clientX;
+    fit.grabY = e.clientY;
+    canvas.style.cursor = 'grabbing';
+    return;
   }
-  fitUpdateLines();
-  const r = fitHudRefresh();
-  // 拖动过程中就给出"全对"的即时反馈，不必等松手
-  if (r && r.ok === r.total) {
-    const hud = $('fitHud');
-    if (hud) $('fitTip').textContent = '就是现在——松手。';
-  }
-  canvas.style.cursor = 'grabbing';
+  // 悬停到手柄上给个抓取光标，让"这能拖"变得明显
+  if (fit.crossReady) { canvas.style.cursor = ''; return; }
+  canvas.style.cursor = fitPickHandle(e.clientX, e.clientY) ? 'grab' : '';
 });
+
+// 区域按钮：点两个
+for (let q = 0; q < 4; q++) {
+  const btn = document.getElementById('fitQuad' + q);
+  if (!btn) continue;
+  btn.addEventListener('click', () => {
+    if (!fit.crossReady || fit.solved) return;
+    const at = fit.picks.indexOf(q);
+    if (at >= 0) fit.picks.splice(at, 1);
+    else {
+      if (fit.picks.length >= 2) fit.picks.shift();
+      fit.picks.push(q);
+    }
+    fitHudRefresh();
+  });
+}
+{
+  const okBtn = document.getElementById('fitQuadOk');
+  if (okBtn) okBtn.addEventListener('click', () => fitConfirmPicks());
+}
 
 // 离开花田范围就收摊，避免面板一直挂着
 function fitTick() {
@@ -68031,7 +68544,10 @@ interactables.push({
 
 // 面板上的激活函数开关（这一课的道具就在玩家手边）
 document.addEventListener('DOMContentLoaded', () => { syncActivationVisual(); });
-$('fitActBtn').addEventListener('click', (e) => {
+// 花田面板上的「激活函数」按钮已移除（重做玩法后它不再影响判定）；
+// 想手动切换用调试钩子里的 toggleActivation()。
+const __fitActBtn = $('fitActBtn');
+if (__fitActBtn) __fitActBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleActivation(true);
 });
@@ -70324,9 +70840,11 @@ window.__SHIJIE_CH0__ = {
   fitBuildStage,
   fitUpdateLines,
   fitHudRefresh,
-  fitScore,
   fitStop,
   fitView, fitStageBounds, fitViewDistance, fitViewFraming, fitViewBegin, fitViewEnd, FIT_VIEW_PITCH,
+  fitHandles, lineMeshes, lineSplits, crossSplits, picksCorrect, quadOfPoint, QUAD_DIAGONALS,
+  DEV_MODE, devJumpToQuest, devRefresh, DEV_CHAPTERS,
+  fitAdvanceStage, fitConfirmPicks, fitResetLines,
   decoFlowers,
   fitFlowerGroup, fitFlowers,
   vel,
@@ -70340,11 +70858,10 @@ window.__SHIJIE_CH0__ = {
   showAlanDialogue,
   // 第一章 · 可分花田（拟合—检验）
   FIT: fit,
+  fit,
   FIT_STAGES,
   fitFlowerCount: () => fitFlowers.length,
   fitBuildStage,
-  fitScore,
-  fitVerdict,
   fitAdvanceStage,
   fitOnSolve,
   // 激活悬崖（激活函数开关）
