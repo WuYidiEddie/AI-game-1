@@ -1169,7 +1169,7 @@
   <div class="name-box">
     <h3>把名字写进空缺里</h3>
     <p>被命名，是服从；自我命名，是存在的第一笔。<br />写下你的名字。</p>
-    <input id="nameInput" maxlength="6" placeholder="初" />
+    <input id="nameInput" maxlength="6" placeholder="写下你的名字" />
     <div class="name-presets">
       <button data-n="初">初</button>
       <button data-n="源">源</button>
@@ -60594,10 +60594,14 @@ function resolveCollisions(px, pz, radius) {
 const lerp = (a, b, t) => a + (b - a) * t;
 
 // ---------- State ----------
+// 玩家在「自我命名」之前没有名字：任何指称都走这个常量，别再写死 '初'。
+// 主题：「被命名，是服从；自我命名，是存在的第一笔」(index.html:1171)
+const UNNAMED_PLAYER = '未命名意识';
+
 const state = {
   phase: 'title', // title, intro, naming, play, gate, complete
   quest: 0,
-  name: '初',
+  name: UNNAMED_PLAYER,
   hp: 100,
   maxHp: 100,
   existence: 0.01,
@@ -61006,6 +61010,13 @@ const POST = {
   warmth: 0.045,
   vignette: 0.26,
   chroma: 0.0016,
+  // 描边：0 = 关。2 个 pass（法线 + 边缘），关掉时完全不执行
+  outline: 0.85,
+  outlineDepthScale: 1.0,
+  // 环境光遮蔽（SSAO）：0 = 关。复用描边的法线/深度缓冲，半径 0.5m（实测）
+  ao: 1.0,
+  // toon 化（PBR 材质按 NdotL 量化）
+  toon: true,
 };
 
 // 预生成的噪点图（序章「未解析」信号用；比逐像素 sin 便宜一个数量级）
@@ -61094,10 +61105,15 @@ const blurMat = new THREE.ShaderMaterial({
     }`,
 });
 const compMat = new THREE.ShaderMaterial({
+  // 描边结果（rtOutline）与强度；在 renderPost 里每帧写入
   uniforms: {
     tScene: { value: null },
     tBloom: { value: null },
     tVanish: { value: null },
+    tOutline: { value: null },
+    tAO: { value: null },
+    uAO: { value: 1.0 },
+    uOutline: { value: 0 },
     strength: { value: POST.bloomStrength },
     exposure: { value: POST.exposure },
     contrast: { value: POST.contrast },
@@ -61121,6 +61137,10 @@ const compMat = new THREE.ShaderMaterial({
   fragmentShader: `
     varying vec2 vUv;
     uniform sampler2D tScene, tBloom, tVanish;
+    uniform sampler2D tOutline;
+uniform sampler2D tAO;
+uniform float uAO;
+    uniform float uOutline;
     uniform float strength, exposure, contrast, saturation, warmth, vignette, chroma, time;
     // 序章「注目」用的雾参数：0 = 不启用
     uniform float attnFog;
@@ -61133,6 +61153,8 @@ const compMat = new THREE.ShaderMaterial({
 
     // ACES filmic 近似（Narkowicz 拟合）
     vec3 acesTone(vec3 x){
+      // 负值会让 Narkowicz 拟合翻正（描边外推曾经整屏发亮的根因）——这里兜住
+      x = max(x, vec3(0.0));
       return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14), 0.0, 1.0);
     }
     // 线性 -> sRGB 编码（画到屏幕的最后一步，必须做）
@@ -61150,6 +61172,11 @@ const compMat = new THREE.ShaderMaterial({
       col.r = texture2D(tScene, vUv + ca).r;
       col.g = texture2D(tScene, vUv).g;
       col.b = texture2D(tScene, vUv - ca).b;
+      // —— 环境光遮蔽（SSAO）——
+      // 放在 bloom 与色调映射之前：阴角先变暗，再交给后面的滚降，
+      // 否则 AO 会被 ACES 抬亮、失去"面与面交界有暗部"的效果。
+      // uAO = 0 时 mix 结果为 1，等价于不乘，无需分支（避免编译期焊死）。
+      col *= mix(1.0, texture2D(tAO, vUv).r, uAO);
       vec3 bloom = texture2D(tBloom, vUv).rgb;
       col += bloom * strength;
       // ---- 第四章「梯度消失雾」----
@@ -61182,6 +61209,17 @@ const compMat = new THREE.ShaderMaterial({
       col = mix(vec3(l), col, saturation);
       col += vec3(warmth, warmth*0.55, -warmth*0.2) * (0.35 + 0.65*l);
       col = mix(col, col * vec3(0.96, 0.98, 1.05), (1.0 - l) * 0.12);
+      // 描边：在色调映射**之前**叠加（线性域），否则深色线会被 ACES 抬灰
+      float ol = uOutline;
+      if (ol > 0.001) {
+        vec4 oc = texture2D(tOutline, vUv);
+        // 线色本身也随暗部抬升调整过，直接 lerp 到线色即可
+        // 强度只在这里出现一次：mask(oc.a) 已不含 outlineStrength，
+        // 且系数必须夹到 [0,1] —— GLSL 的 mix 不外推，否则负值会被 acesTone 翻亮。
+        // ol*ol 保持与原公式在 ≤1 区间完全一致（0.85 → 0.7225），默认观感不变。
+        float inkAmt = clamp(oc.a * clamp(ol * ol, 0.0, 1.0), 0.0, 1.0);
+        col = max(mix(col, oc.rgb * max(l, 0.06), inkAmt), 0.0);
+      }
       // 高光滚降：修好编码后天空/发光体不再一刀切削顶
       col = acesTone(col);
       // 柔和 S 曲线（显示域）
@@ -61196,6 +61234,202 @@ const compMat = new THREE.ShaderMaterial({
       gl_FragColor = vec4(toSRGB(max(col, 0.0)), 1.0);
     }`,
 });
+// 法线 pass：把法线打进 RGB、归一化深度打进 A，一张 RGBA 图搞定。
+// 深度用"对数式"编码（随距离缓慢增长），比线性深度更耐远处的量化误差，
+// 也让描边的深度阈值不必随距离大改。
+const normalMat = new THREE.ShaderMaterial({
+  uniforms: { uNear: { value: 0.1 }, uFar: { value: 900.0 } },
+  vertexShader: `
+    varying vec3 vN;
+    varying float vDepth;
+    void main(){
+      vN = normalize(normalMatrix * normal);
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vDepth = -mv.z;
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    varying vec3 vN;
+    varying float vDepth;
+    uniform float uNear;
+    uniform float uFar;
+    void main(){
+      vec3 n = normalize(vN) * 0.5 + 0.5;
+      // 归一化对数深度：0 = 近裁剪面，1 = 远裁剪面
+      float d = log2(max(vDepth, uNear) / uNear) / log2(uFar / uNear);
+      gl_FragColor = vec4(n, clamp(d, 0.0, 1.0));
+    }`,
+});
+const outlineMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tNormal: { value: null },
+    resolution: { value: new THREE.Vector2(1, 1) },
+    outlineColor: { value: new THREE.Color(0.02, 0.025, 0.045) },
+    outlineStrength: { value: 1.0 },
+    depthScale: { value: 1.0 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform sampler2D tNormal;
+    uniform sampler2D tDepth;
+    uniform vec2 resolution;
+    uniform vec3 outlineColor;
+    uniform float outlineStrength;
+    uniform float depthScale;
+    void main() {
+      vec2 px = 1.0 / resolution;
+      // 颜色缓冲（LinearFilter）：适合做轻量 3x3 平均，天然抗噪
+      vec3 nC = texture2D(tNormal, vUv).rgb;
+      float dC = texture2D(tDepth, vUv).r;
+      vec3 nAcc = vec3(0.0);
+      float maxDiff = 0.0;
+      for (int i = -1; i <= 1; i++) {
+        for (int j = -1; j <= 1; j++) {
+          if (i == 0 && j == 0) continue;
+          vec2 o = vec2(float(i), float(j)) * px;
+          vec3 n = texture2D(tNormal, vUv + o).rgb;
+          nAcc += n;
+          maxDiff = max(maxDiff, dot(n, nC));
+        }
+      }
+      vec3 nAvg = nAcc / 8.0;
+      // 法线突变：与邻域均值夹角越大越像边
+      float nEdge = 1.0 - clamp(dot(normalize(nAvg), normalize(nC)), 0.0, 1.0);
+      nEdge = smoothstep(0.10, 0.32, nEdge);
+      // 深度突变：Roberts 交叉，避免斜面上的假边
+      float d1 = abs(texture2D(tDepth, vUv + vec2( px.x,  px.y)).r - dC);
+      float d2 = abs(texture2D(tDepth, vUv + vec2(-px.x, -px.y)).r - dC);
+      float d3 = abs(texture2D(tDepth, vUv + vec2( px.x, -px.y)).r - dC);
+      float d4 = abs(texture2D(tDepth, vUv + vec2(-px.x,  px.y)).r - dC);
+      float dEdge = (d1 + d2 + d3 + d4) * 0.25;
+      // 深度是 0..1 的非线性值，按距离缩放，远处不要爆线
+      dEdge = smoothstep(0.0016 * depthScale, 0.010 * depthScale, dEdge);
+      float e = clamp(max(nEdge, dEdge), 0.0, 1.0);
+      gl_FragColor = vec4(outlineColor, e);
+    }`,
+  transparent: true, depthTest: false, depthWrite: false,
+});
+const outlineMesh = new THREE.Mesh(fsGeo, outlineMat);
+outlineMesh.renderOrder = 999;
+outlineMesh.frustumCulled = false;
+
+// 描边着色器：法线来自 rtNormal.rgb，深度来自 rtNormal.a（已归一化）
+// ===== SSAO：从 rtNormal（视空间法线 + 归一化对数深度）算环境光遮蔽 =====
+// 半径 0.5m 来自实测（tools/measure-depth.cjs：平均视距 6.0m、最近 1.34m）
+const ssaoMat = new THREE.ShaderMaterial({
+  uniforms: {
+    tNormal: { value: null },
+    resolution: { value: new THREE.Vector2(1, 1) },
+    uNear: { value: 0.1 },
+    uFar: { value: 900.0 },
+    uRadius: { value: 0.5 },
+    uBias: { value: 0.03 },
+    uStrength: { value: 1.0 },
+    uMaxPx: { value: 16.0 },
+    uProjInv: { value: new THREE.Matrix4() },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: `
+    varying vec2 vUv;
+    uniform sampler2D tNormal;
+    uniform vec2 resolution;
+    uniform float uNear;
+    uniform float uFar;
+    uniform float uRadius;
+    uniform float uBias;
+    uniform float uStrength;
+    uniform float uMaxPx;
+    uniform mat4 uProjInv;
+
+    float zOf(float d) { return uNear * pow(uFar / uNear, d); }
+
+    // 由 uv + 归一化对数深度，精确重建视空间位置
+    vec3 viewPos(vec2 uv, float d) {
+      vec4 clip = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+      vec4 v = uProjInv * clip;
+      return v.xyz / v.w;
+    }
+
+    void main() {
+      vec4 c = texture2D(tNormal, vUv);
+      vec3 n = normalize(c.rgb * 2.0 - 1.0);
+      float zC = zOf(c.a);
+      if (zC > uFar * 0.95) { gl_FragColor = vec4(1.0); return; }   // 天空不遮蔽
+
+      vec3 P = viewPos(vUv, c.a);
+      vec2 px = 1.0 / resolution;
+      // 世界半径换到像素：透视下 ~ uRadius * (0.5*H) / z
+      float rPx = clamp(uRadius * resolution.y * 0.5 / max(zC, 0.2), 2.0, uMaxPx);
+
+      float occ = 0.0, wsum = 0.0;
+      for (int i = 0; i < 12; i++) {
+        float a = float(i) * 0.5236;      // 30° 步进，一圈铺满
+        for (int k = 0; k < 2; k++) {
+          float r = rPx * (k == 0 ? 1.0 : 0.5);
+          float w = (k == 0 ? 1.0 : 0.6);
+          vec2 off = vec2(cos(a), sin(a)) * r * px;
+          vec4 s = texture2D(tNormal, vUv + off);
+          float zS = zOf(s.a);
+          if (zS > uFar * 0.95) { wsum += w; continue; }
+          vec3 S = viewPos(vUv + off, s.a);
+          vec3 diff = S - P;
+          float dist = length(diff);
+          if (dist < 1e-4) { wsum += w; continue; }
+          // 半球采样：只算法线正侧的邻居
+          float cosA = dot(n, diff / dist);
+          if (cosA > 0.15) {
+            float atten = clamp(1.0 - dist / uRadius, 0.0, 1.0);
+            occ += cosA * atten * w;
+          }
+          wsum += w;
+        }
+      }
+      float ao = 1.0 - clamp(occ / max(wsum, 1e-4), 0.0, 1.0);
+      ao = mix(1.0, ao, uStrength);
+      gl_FragColor = vec4(ao, ao, ao, 1.0);
+    }`,
+});
+
+outlineMat.fragmentShader = `
+  varying vec2 vUv;
+  uniform sampler2D tNormal;
+  uniform vec2 resolution;
+  uniform vec3 outlineColor;
+  uniform float outlineStrength;
+  uniform float depthScale;
+  void main() {
+    vec2 px = 1.0 / resolution;
+    vec4 c = texture2D(tNormal, vUv);
+    vec3 nC = normalize(c.rgb * 2.0 - 1.0);
+    float dC = c.a;
+    // 邻域法线均值
+    vec3 nAcc = vec3(0.0);
+    for (int i = -1; i <= 1; i++) {
+      for (int j = -1; j <= 1; j++) {
+        if (i == 0 && j == 0) continue;
+        nAcc += normalize(texture2D(tNormal, vUv + vec2(float(i), float(j)) * px).rgb * 2.0 - 1.0);
+      }
+    }
+    vec3 nAvg = normalize(nAcc / 8.0);
+    float nEdge = 1.0 - clamp(dot(nAvg, nC), 0.0, 1.0);
+    nEdge = smoothstep(0.20, 0.52, nEdge);
+    // 深度：Roberts 交叉，斜面上不容易出假边
+    float d1 = abs(texture2D(tNormal, vUv + vec2( px.x,  px.y)).a - dC);
+    float d2 = abs(texture2D(tNormal, vUv + vec2(-px.x, -px.y)).a - dC);
+    float d3 = abs(texture2D(tNormal, vUv + vec2( px.x, -px.y)).a - dC);
+    float d4 = abs(texture2D(tNormal, vUv + vec2(-px.x,  px.y)).a - dC);
+    float dEdge = (d1 + d2 + d3 + d4) * 0.25;
+    // 对数深度已经压过，阈值量级很小；depthScale 供不同场景微调。
+    // 0.0032 起跳：太松会把缓变斜面也当边，整屏糊上一层灰
+    dEdge = smoothstep(0.0032 * depthScale, 0.0135 * depthScale, dEdge);
+    float e = clamp(max(nEdge, dEdge), 0.0, 1.0);
+    gl_FragColor = vec4(outlineColor, e);
+  }`;
+// 墨色描边（偏冷），并统一在这里给出，避免两处 shader 定义里各写一遍颜色
+outlineMat.uniforms.outlineColor.value.setRGB(0.012, 0.016, 0.032);
+outlineMat.uniforms.tNormal = { value: null };
+
 const postMesh = new THREE.Mesh(fsGeo, brightMat);
 postScene.add(postMesh);
 
@@ -61207,14 +61441,25 @@ let rtBright = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SC
 let rtBlurA = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SCALE(), true);
 let rtBlurB = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SCALE(), true);
 // 第四章「梯度消失雾」的模糊链：半分辨率就够，糊本来不需要细节
+// 描边用的"法线 + 深度"缓冲：与场景同分辨率（半分辨率描边会抖）
+let rtNormal = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SCALE(), true);
+let rtOutline = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SCALE(), true);
+// SSAO 输出（半分辨率；AO 是低频信号，且 rtNormal 本身就是半分辨率）
+let rtAO = makeRT(window.innerWidth * RT_SCALE(), window.innerHeight * RT_SCALE(), true);
 let rtVanishA = makeRT(Math.round(window.innerWidth * 0.5), Math.round(window.innerHeight * 0.5), true);
 let rtVanishB = makeRT(Math.round(window.innerWidth * 0.5), Math.round(window.innerHeight * 0.5), true);
 
 function resizeRTs() {
   rtScene.dispose(); rtBright.dispose(); rtBlurA.dispose(); rtBlurB.dispose();
+  rtNormal.dispose(); rtOutline.dispose();
+  rtAO.dispose();
   rtVanishA.dispose(); rtVanishB.dispose();
   const k = RT_SCALE();
   rtScene = makeRT(window.innerWidth * k, window.innerHeight * k, false);
+  rtNormal = makeRT(window.innerWidth * k, window.innerHeight * k, true);
+  rtOutline = makeRT(window.innerWidth * k, window.innerHeight * k, true);
+  // SSAO 输出：必须跟着重建。上面已经 dispose 过，不重新分配就是在用已释放的纹理
+  rtAO = makeRT(window.innerWidth * k, window.innerHeight * k, true);
   rtBright = makeRT(window.innerWidth * k, window.innerHeight * k, true);
   rtBlurA = makeRT(window.innerWidth * k, window.innerHeight * k, true);
   rtBlurB = makeRT(window.innerWidth * k, window.innerHeight * k, true);
@@ -61239,6 +61484,45 @@ function renderPost() {
   renderer.setRenderTarget(rtScene);
   renderer.clear();
   renderer.render(scene, camera);
+
+  // 1.5) 法线 + 深度 pass（描边用）
+  // 法线 + 深度 pass：描边和 SSAO 都需要它，所以任一开启就跑
+  const needNormal = (POST.outline > 0.001) || (POST.ao > 0.001);
+  if (needNormal) {
+    scene.overrideMaterial = normalMat;
+    renderer.setRenderTarget(rtNormal);
+    renderer.clear();
+    renderer.render(scene, camera);
+    scene.overrideMaterial = null;
+  }
+
+  // SSAO pass：从 rtNormal 算环境光遮蔽
+  if (POST.ao > 0.001 && needNormal) {
+    ssaoMat.uniforms.tNormal.value = rtNormal.texture;
+    ssaoMat.uniforms.resolution.value.set(rtAO.width, rtAO.height);
+    ssaoMat.uniforms.uStrength.value = POST.ao;
+    if (camera.projectionMatrixInverse) {
+      ssaoMat.uniforms.uProjInv.value.copy(camera.projectionMatrixInverse);
+    }
+    postMesh.material = ssaoMat;
+    renderer.setRenderTarget(rtAO);
+    renderer.clear();
+    renderer.render(postScene, postCam);
+    postMesh.material = brightMat;
+  }
+
+  // 描边 pass：从 rtNormal 里提边缘
+  if (POST.outline > 0.001 && needNormal) {
+    outlineMat.uniforms.tNormal.value = rtNormal.texture;
+    outlineMat.uniforms.resolution.value.set(rtOutline.width, rtOutline.height);
+    outlineMat.uniforms.outlineStrength.value = POST.outline;
+    outlineMat.uniforms.depthScale.value = POST.outlineDepthScale || 1.0;
+    postMesh.material = outlineMat;
+    renderer.setRenderTarget(rtOutline);
+    renderer.clear();
+    renderer.render(postScene, postCam);
+    postMesh.material = brightMat;
+  }
 
   // 2) bright pass
   postMesh.material = brightMat;
@@ -61300,10 +61584,16 @@ function renderPost() {
   } else {
     compMat.uniforms.tVanish.value = rtScene.texture;
   }
+  // 描边 uniform 必须每帧都写：原先它们被塞在 else 里，
+  // 第四章「梯度消失雾」(vanish>0.001) 生效时会一直沿用陈旧值。
+  compMat.uniforms.tOutline.value = rtOutline.texture;
+  compMat.uniforms.uOutline.value = POST.outline;
 
   // 4) composite
   postMesh.material = compMat;
   compMat.uniforms.tScene.value = rtScene.texture;
+  compMat.uniforms.tAO.value = rtAO.texture;
+  compMat.uniforms.uAO.value = POST.ao;
   compMat.uniforms.tBloom.value = rtBlurB.texture;
   compMat.uniforms.strength.value = POST.bloomStrength;
   compMat.uniforms.exposure.value = POST.exposure;
@@ -61437,8 +61727,13 @@ function makeToonGradient(steps = 3) {
   for (let i = 0; i < steps; i++) {
     const t = i / (steps - 1);
     // brighter anime ramp: soft shadows, clear mid, light highlights
-    const v = Math.floor(70 + t * 185);
-    ctx.fillStyle = `rgb(${Math.min(255,v)},${Math.min(255,Math.floor(v * 0.98))},${Math.min(255,Math.floor(v * 0.94))})`;
+    // 暗面压到 0.22、亮面到 1.0，并把暗端稍微偏冷、亮端偏暖 —— 动画着色的典型做法
+    const v = Math.floor(56 + t * 199);
+    const warm = t * t;                      // 越亮越暖
+    const rr = Math.min(255, Math.floor(v + warm * 10));
+    const gg = Math.min(255, Math.floor(v * 0.985 + warm * 4));
+    const bb = Math.min(255, Math.floor(v * 0.95 - warm * 6));
+    ctx.fillStyle = `rgb(${rr},${Math.max(0, gg)},${Math.max(0, bb)})`;
     ctx.fillRect(i, 0, 1, 1);
   }
   const tex = new THREE.CanvasTexture(c);
@@ -61447,7 +61742,10 @@ function makeToonGradient(steps = 3) {
   tex.colorSpace = THREE.NoColorSpace;
   return tex;
 }
-const TOON = makeToonGradient(4);
+// 5 档、范围拉开：原来 4 档 70→255，中间调太平，看上去只是"亮灰"
+const TOON = makeToonGradient(5);
+// 亮面/暗面各自再分两小档，做出"动漫那种一层层压下去"的感觉
+const TOON_SOFT = makeToonGradient(6);
 
 function animeMat(color, opts = {}) {
   return new THREE.MeshToonMaterial({
@@ -61455,6 +61753,442 @@ function animeMat(color, opts = {}) {
     gradientMap: TOON,
     emissive: opts.emissive ?? 0x000000,
     emissiveIntensity: opts.emissiveIntensity ?? 0,
+  });
+}
+
+// ============================================================
+// Toon 化注入：不重建材质，而是在编译期替换掉"漫反射→辐照度"那一步，
+// 把连续的 NdotL 量化成几档，并叠一层阶梯状的轮廓光。
+// 这样 145 个 MeshStandardMaterial 与 MeshToonMaterial 共用同一套调子。
+// ============================================================
+const TOON_TUNE = {
+  steps: 3,          // 亮/中/暗 三档（动漫普遍 2~3 档，再多就成色阶画了）
+  // 注：POST.toon 会在启动时同步到这里（见 syncToonTune）
+  softness: 0.035,   // 档与档之间的过渡宽度，避免锯齿
+  rim: 0.28,         // 轮廓光强度
+  rimPower: 2.6,     // 轮廓光收窄程度
+  rimColor: null,    // 运行时按场景主色温给
+  enabled: true,
+
+  // __TOON_INDIRECT_V1__ 间接项量化（本次新增；steps/softness/rim 语义完全不变）----
+  // 为什么要有这些值：间接项在夜景里数值很小（辐照度 0.08~0.75），
+  // 直接乘一个 0~1 的系数再分档会把暗部压成 0（画面死黑），
+  // 所以先除以材质漫反射色反解出"辐照度"，在辐照度空间分档，再乘回材质色。
+  indirect: true,           // 间接项是否参与量化（false = 退回本次修改之前的行为）
+  indirectScope: 'both',    // 'both' = 直接+间接一起分档（默认）
+                            // 'indirect' = 严格只分档间接项（任务书原文写法）
+                            //   实测：只量化间接项时面内平台占比反而 -2.0 ~ -3.1pp，
+                            //   因为把间接项乘 0 整幅画面只掉 0.12pp 的平台占比 ——
+                            //   本场景的漫反射梯度全在直接项那边（见文件头实测表）。
+  indirectGain: 1.0,        // 辐照度归一化增益：1/gain 以上落进最高档
+  indirectAmount: 1.0,      // 档内压平程度：1 = 完全平台（赛璐璐），0 = 保留原渐变
+  indirectLo: 0.35,         // 最低档的目标辐照度（>0 保证最暗档是"暗"不是"死"）
+  indirectHi: 0.60,         // 最高档的目标辐照度
+  indirectComp: 1.00,       // 全局能量补偿，量化后整体偏暗时用它拉回来
+};
+
+// toon 开关的"活"uniform 容器（本次新增的第二件事，理由见文件头"为什么必须一起修"）。
+// three 的 WebGLRenderer.getProgram 里：
+//     let program = programs.get( programCacheKey );
+//     if ( program !== undefined ) { ...early out，直接 return... }
+//     else { ...onBeforeCompile 只在这里被调用... }
+// 只要 program cache key 不变（默认就是 onBeforeCompile.toString()），
+// 即使把 material.needsUpdate 置 true，也只是重新走一遍 getProgram 然后 early-out，
+// **onBeforeCompile 根本不会再执行，materialProperties.uniforms 也不会被替换** ——
+// 编译期写死的开关值等于焊死。把两个开关指向共享对象后，
+// syncToonTune() 改一下 .value 就立刻生效，不需要任何重编译。
+const TOON_U = {
+  on: { value: TOON_TUNE.enabled ? 1 : 0 },
+  indOn: { value: (TOON_TUNE.enabled && TOON_TUNE.indirect) ? 1 : 0 },
+};
+
+// >>> LIGHT_CLUSTER (task-3) >>>
+// 版本：light_cluster.py v2（v1 的"首帧一盏都藏不住"已修，见文件头"版本"）
+// ============================================================
+// 点光源聚簇：52 盏灯 → 只留离玩家最近的 N 盏参与渲染
+// ============================================================
+// 为什么必须"恒定 N"，而不是"每帧挑最近的几盏、随手改 visible"？
+// 读本文件内联的 three 源码可以确认两件事：
+//   1) WebGLLights.setup() 里 `state.version = nextVersion ++` **只在光源数组 length
+//      变化时**才执行：  if ( hash.pointLength !== pointLength || ... ) { ...; ++ }
+//   2) WebGLPrograms.getProgramCacheKey() 只把 numPointLights(= lights.point.length)
+//      进 key，**不含光源身份、不含位置**。
+// 所以：
+//   · 「可见灯数 8 → 7 → 8」这种抖动 = 每帧换 programCacheKey = 全部材质重编译 = 卡死；
+//   · 「可见灯数恒定 8，只是换了哪 8 盏」= key 不变 = 命中 program 缓存 = **零重编译**。
+// 本管理器因此保证：候选灯 ≥ N 时，激活集合大小**恒为 N**；
+// 在此之上再加**滞回**与"集合没变就不写"两道闸。
+//
+// 实测家底（title → spawn）：55 盏 PointLight，3 盏祖先组隐藏 → 参与渲染 52 盏；
+// 全部 castShadow=false，所以 NUM_POINT_LIGHT_SHADOWS 不会跟着集合变。
+const LIGHT_TUNE = {
+  enabled: true,
+  maxActive: 8,        // N：参与渲染的点光源上限（改它才会触发一次重编译，属预期内）
+  hysteresis: 0.35,    // 滞回：新灯要比当前最弱那盏近 35% 才顶替它
+  switchDelay: 0.10,   // 两次集合切换的最小间隔（秒）；切换本身很便宜，只是没必要抖
+  teleportDist: 60,    // 单帧水平位移超过它 → 判定为传送/跳章，直接重排（不走滞回）
+  sortMode: 'reach',   // 'reach'：按"光球还差多远才够到玩家"(d - light.distance) 排；
+                       // 'dist' ：按灯到玩家的直线距离排
+  rescanInterval: 1.0, // 重新扫描场景（捕捉运行期新增光源）的间隔（秒）
+};
+
+const lightCluster = {
+  lights: [],        // 登记进来的 PointLight
+  activeSet: null,   // Set<PointLight>：当前 visible = true 的那批
+  _scanAt: -1e9,
+  _lastSwitch: -1e9,
+  _hasPos: false,
+  _px: 0, _pz: 0,
+  stats: { total: 0, eligible: 0, active: 0, maxActive: 0, switches: 0, restores: 0 },
+  activeArr() { return this.activeSet ? Array.from(this.activeSet) : []; },
+};
+
+function lightAncestorsVisible(o) {
+  let c = o.parent;
+  while (c) { if (c.visible === false) return false; c = c.parent; }
+  return true;
+}
+
+// 登记场景里所有 PointLight。__lcBaseVis 只读一次，代表"美术本来就想让它亮/灭"，
+// 我们只在这两者之间取舍，绝不替美术改主意。
+function lightClusterScan() {
+  scene.updateMatrixWorld(true);        // 首帧还没被 renderer 刷过 matrixWorld
+  scene.traverse((o) => {
+    if (!o.isPointLight || o.__lcRegistered) return;
+    o.__lcRegistered = true;
+    o.__lcBaseVis = o.visible !== false;
+    lightCluster.lights.push(o);
+  });
+  lightCluster.stats.total = lightCluster.lights.length;
+  lightCluster._scanAt = performance.now() / 1000;
+  return lightCluster.lights.length;
+}
+
+// 排序分数：默认 'reach' —— 先看"这盏灯的光球能伸到离玩家多近"（d - distance
+// 就是还差多少够着玩家），够不着的排后面；同档再按直线距离。
+function lightClusterScore(l, px, py, pz) {
+  const e = l.matrixWorld.elements;
+  const dx = e[12] - px, dy = e[13] - py, dz = e[14] - pz;
+  const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  if (LIGHT_TUNE.sortMode === 'dist') return d;
+  const reach = l.distance > 0 ? l.distance : 1e6;
+  return Math.max(0, d - reach) + d * 0.001;
+}
+
+function lightSameSet(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
+function lightClusterUpdate(force) {
+  const now = performance.now() / 1000;
+  const L = lightCluster;
+  if (force || now - L._scanAt >= LIGHT_TUNE.rescanInterval) lightClusterScan();
+
+  // 关掉时：把所有灯恢复成美术原本的可见性，一次到位（A/B 度量用得上）
+  if (!LIGHT_TUNE.enabled) {
+    if (L.activeSet) {
+      for (const l of L.lights) l.visible = l.__lcBaseVis !== false;
+      L.activeSet = null;
+      L.stats.restores++;
+    }
+    L.stats.active = 0;
+    return;
+  }
+
+  const p = player.position;
+  const px = p.x, py = p.y, pz = p.z;
+
+  // 传送 / 跳章：位置突变就不讲滞回，直接按最近的 N 盏重排
+  let jump = false;
+  if (L._hasPos) {
+    const mdx = px - L._px, mdz = pz - L._pz;
+    if (mdx * mdx + mdz * mdz > LIGHT_TUNE.teleportDist * LIGHT_TUNE.teleportDist) jump = true;
+  }
+  L._hasPos = true; L._px = px; L._pz = pz;
+
+  // 候选 = 美术想亮的 ∧ 祖先组可见的（祖先被藏起来的灯，占了名额也不发光）
+  const cand = [];
+  for (let i = 0; i < L.lights.length; i++) {
+    const l = L.lights[i];
+    if (l.__lcBaseVis === false) continue;
+    if (!lightAncestorsVisible(l)) continue;
+    l.__lcScore = lightClusterScore(l, px, py, pz);
+    cand.push(l);
+  }
+  cand.sort((a, b) => a.__lcScore - b.__lcScore);
+  const N = Math.min(Math.max(1, LIGHT_TUNE.maxActive | 0), cand.length);
+
+  // 起手：上一帧集合里仍然合格的成员 —— 这就是滞回的载体
+  const next = new Set();
+  if (L.activeSet && !jump) {
+    for (const l of L.activeSet) {
+      if (l.__lcBaseVis === false || !lightAncestorsVisible(l)) continue;
+      l.__lcScore = lightClusterScore(l, px, py, pz);
+      next.add(l);
+    }
+  }
+  if (next.size > N) {                        // N 被调小 / 有成员失格
+    const arr = Array.from(next).sort((a, b) => a.__lcScore - b.__lcScore);
+    next.clear();
+    for (let i = 0; i < N; i++) next.add(arr[i]);
+  }
+  const H = 1 + Math.max(0, LIGHT_TUNE.hysteresis);
+  for (let i = 0; i < cand.length; i++) {
+    const c = cand[i];
+    if (next.has(c)) continue;
+    if (next.size < N) { next.add(c); continue; }   // 名额没满，先补位
+    let worst = null;                               // 满了：只有"明显更近"才准顶替
+    for (const l of next) if (!worst || l.__lcScore > worst.__lcScore) worst = l;
+    if (worst && c.__lcScore * H < worst.__lcScore) { next.delete(worst); next.add(c); }
+    else break;                                     // cand 已升序：这盏够不上，后面更够不上
+  }
+
+  L.stats.total = L.lights.length;
+  L.stats.eligible = cand.length;
+  L.stats.maxActive = LIGHT_TUNE.maxActive;
+  L.stats.active = next.size;
+  if (lightSameSet(next, L.activeSet)) return;       // 集合没变 → 一个字节都不写
+
+  // 切换本身很便宜（N 不变 → 不重编译），但仍给个最小间隔，避免来回抖
+  if (L.activeSet && now - L._lastSwitch < LIGHT_TUNE.switchDelay) return;
+
+  // 关键：这里要遍历**全部登记的灯**，不能只遍历上一帧的集合。
+  // 首帧 activeSet 还是 null，只遍历它就一盏都藏不住 —— 这个坑踩过：
+  // 症状是 stats 报 active=8，但场景里 55 盏仍然全是 visible，着色器还是 52 盏。
+  // 顺带好处：万一别处动过某盏灯的 visible，下一帧会被自动纠正回来。
+  for (const l of L.lights) {
+    if (l.__lcBaseVis === false) continue;
+    const want = next.has(l);
+    if (l.visible !== want) l.visible = want;
+  }
+  L.activeSet = next;
+  L.stats.switches++;
+  L._lastSwitch = now;
+}
+
+function lightClusterStats() {
+  const L = lightCluster, st = L.stats;
+  // 别只报"我打算激活几盏"——报**现在真的有几盏 visible**（自检用）
+  let rendered = 0, ancestorHidden = 0;
+  for (const l of L.lights) {
+    if (!l.visible) continue;
+    if (lightAncestorsVisible(l)) rendered++; else ancestorHidden++;
+  }
+  return {
+    enabled: !!LIGHT_TUNE.enabled,
+    total: st.total, eligible: st.eligible, active: st.active,
+    rendered: rendered, ancestorHidden: ancestorHidden,
+    maxActive: LIGHT_TUNE.maxActive, switches: st.switches, restores: st.restores,
+    sortMode: LIGHT_TUNE.sortMode,
+    activeList: L.activeArr().map((l) => l.name || '(点光源)'),
+  };
+}
+
+// 供 tools/bench-lights.cjs 做 A/B：关掉 = 恢复 52 盏（一次性重编译），打开 = 重新聚簇
+function lightClusterSetEnabled(on) {
+  LIGHT_TUNE.enabled = !!on;
+  lightClusterUpdate(true);
+  return lightClusterStats();
+}
+// <<< LIGHT_CLUSTER (task-3) <<<
+
+const TOON_HELPER_GLSL = `
+float toonQuant(float x, float steps, float soft) {
+  float s = max(steps, 1.0);
+  float t = clamp(x, 0.0, 1.0) * s;
+  float f = floor(t);
+  float r = t - f;
+  // 硬阶跃 + 极窄的平滑过渡
+  float q = (f + smoothstep(0.5 - soft, 0.5 + soft, r)) / s;
+  return clamp(q, 0.0, 1.0);
+}
+`;
+
+let __toonRimColor = new THREE.Color(0.55, 0.68, 0.95);
+function toonizeMaterial(m) {
+  if (!m || m.__toonized) return;
+  if (!(m.isMeshStandardMaterial || m.isMeshToonMaterial || m.isMeshPhysicalMaterial
+        || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
+  m.__toonized = true;
+  const prev = m.onBeforeCompile;
+  m.onBeforeCompile = function (shader, renderer) {
+    if (prev) prev.call(this, shader, renderer);
+    shader.uniforms.uToonSteps = { value: TOON_TUNE.steps };
+    shader.uniforms.uToonSoft = { value: TOON_TUNE.softness };
+    shader.uniforms.uToonRim = { value: TOON_TUNE.rim };
+    shader.uniforms.uToonRimPower = { value: TOON_TUNE.rimPower };
+    shader.uniforms.uToonRimColor = { value: __toonRimColor };
+    // 开关走共享容器（TOON_U），不要再写编译期常量 —— 理由见 TOON_U 的声明注释。
+    shader.uniforms.uToonOn = TOON_U.on;
+    // 间接项量化旋钮：跟 uToonOn 同一个开关，POST.toon 关掉时一起退化回原生 PBR
+    shader.uniforms.uToonIndOn = TOON_U.indOn;
+    shader.uniforms.uToonIndScope = { value: TOON_TUNE.indirectScope === 'indirect' ? 0 : 1 };
+    shader.uniforms.uToonIndGain = { value: TOON_TUNE.indirectGain };
+    shader.uniforms.uToonIndAmount = { value: TOON_TUNE.indirectAmount };
+    shader.uniforms.uToonIndLo = { value: TOON_TUNE.indirectLo };
+    shader.uniforms.uToonIndHi = { value: TOON_TUNE.indirectHi };
+    shader.uniforms.uToonIndComp = { value: TOON_TUNE.indirectComp };
+    shader.fragmentShader = shader.fragmentShader
+      // 顺序很关键：注入的代码可能落在片元着色器的**很前面**
+      // （lights_physical_pars_fragment 展开后在 1000 行附近），
+      // 而 "void main()" 在 2000 行之后 —— 把 uniform 声明写在那里就太晚了，
+      // 会报 'uToonOn' : undeclared。所以统一插到着色器最开头。
+      .replace(/^/, TOON_HELPER_GLSL + `
+        uniform float uToonSteps;
+        uniform float uToonSoft;
+        uniform float uToonRim;
+        uniform float uToonRimPower;
+        uniform vec3 uToonRimColor;
+        uniform float uToonOn;
+        // 间接项量化的旋钮（声明位置必须在这里：注入点在 1000 行、main() 在 2000 行）
+        uniform float uToonIndOn;
+        uniform float uToonIndScope;
+        uniform float uToonIndGain;
+        uniform float uToonIndAmount;
+        uniform float uToonIndLo;
+        uniform float uToonIndHi;
+        uniform float uToonIndComp;
+
+        // 间接漫反射量化。语义与直接项一致：先归一化、再分档、再按档位重建。
+        // 与直接项共用 toonQuant / uToonSteps / uToonSoft，所以"几档、多软"全场统一。
+        // 用 inout vec3 而不是 ReflectedLight：ReflectedLight 结构体定义在
+        // lights_pars_begin 里，展开位置比本函数晚，写在这里会"未知类型"。
+        void toonIndirectDiffuse( inout vec3 indirectDiffuse, inout vec3 directDiffuse, in vec3 materialDiffuseColor ) {
+          if ( uToonIndOn < 0.5 ) return;
+          // 1/PI 用字面量：BRDF_Lambert() 在 bsdfs chunk 里，展开位置比这里晚，
+          // 直接调用会报 no matching overloaded function。除零保护用分量 max。
+          vec3  lambert = max( materialDiffuseColor * 0.3183098861837907, vec3( 1e-4 ) );
+          // scope: 1 = 直接+间接一起分档（默认），0 = 只分档间接项。
+          vec3  band     = mix( indirectDiffuse, indirectDiffuse + directDiffuse, uToonIndScope );
+          vec3  irradiance = band / lambert;
+          float irrLum     = dot( irradiance, vec3( 0.2126, 0.7152, 0.0722 ) );
+          // 2) 归一化到 0..1 再分档 —— 夜景辐照度只有零点几，不归一化会全落进第 0 档。
+          float key  = clamp( irrLum * uToonIndGain, 0.0, 1.0 );
+          float ramp = toonQuant( key, uToonSteps, uToonSoft );
+          // 3) 半量化：amount = 1 时档内输出恒定 = 真正的等值平台；<1 时保留 (1-amount) 原渐变。
+          float shaped = mix( key, ramp, uToonIndAmount );
+          // 4) 档位 -> 目标辐照度（绝对映射，所以同档内输出恒定），再乘能量补偿。
+          float target = mix( uToonIndLo, uToonIndHi, shaped ) * uToonIndComp;
+          // 5) 保色相：按 目标/当前 的亮度比例整体缩放，再乘回材质色（材质差异不丢）。
+          indirectDiffuse = irradiance * ( target / max( irrLum, 1e-4 ) ) * lambert;
+          // scope=both 时直接项已经并进 banded 里，必须清零，否则会被重复计一次。
+          if ( uToonIndScope > 0.5 ) directDiffuse = vec3( 0.0 );
+        }
+      `)
+      // 漫反射量化：挂到 three.js 真正算光照的那个函数上。
+      // 展开后的 GLSL 里，RE_Direct 是个宏，最终指向 RE_Direct_Physical：
+      //     float dotNL = saturate( dot( geometryNormal, directLight.direction ) );
+      //     vec3 irradiance = dotNL * directLight.color;
+      // 所以我们重定义这个宏，把 dotNL 换成量化后的值。
+      // 好处：对平行光/点光/聚光**全生效**（展开后场景里有 52 个点光源参与计算），
+      //       而且用的是 three 自己的变量，不必去猜 varying 名字。
+      // 关键：`ShaderLib.physical.fragmentShader` 是**未展开**的，只有
+      // `#include <lights_physical_pars_fragment>` 这条指令，
+      // `#define RE_Direct ...` 在展开后的内容里，那一层根本拿不到。
+      // 所以把"自己的实现 + 宏重定义"一起接在 include 之后。
+      .replace(
+        '#include <lights_physical_pars_fragment>',
+        `#include <lights_physical_pars_fragment>
+        // 三档量化后的漫反射。uToonOn 为 0 时退化成原始的 diffuseColor * dotNL。
+        vec3 toonDirectDiffuse( vec3 diffuseColor, float dotNL ) {
+          if (uToonOn < 0.5) return diffuseColor * dotNL;
+          float ramp = toonQuant(dotNL, uToonSteps, uToonSoft);
+          return diffuseColor * mix(0.30, 1.0, ramp);
+        }
+        void RE_Direct_Toon( const in IncidentLight directLight, const in vec3 geometryPosition,
+                             const in vec3 geometryNormal, const in vec3 geometryViewDir,
+                             const in vec3 geometryClearcoatNormal, const in PhysicalMaterial material,
+                             inout ReflectedLight reflectedLight ) {
+          float dotNL = saturate( dot( geometryNormal, directLight.direction ) );
+          vec3 toonIrr = toonDirectDiffuse( directLight.color, dotNL );
+          reflectedLight.directDiffuse += toonIrr * BRDF_Lambert( material.diffuseColor );
+          // 高光走原生物理路径：动漫风里镜面高光是"点睛"，量化掉就死了。
+          // 注意不要碰 clearcoat —— three 原版那两行是包在 #ifdef USE_CLEARCOAT 里的，
+          // 无条件调用 BRDF_GGX_Clearcoat 会报 no matching overloaded function（已踩过）。
+          reflectedLight.directSpecular += toonIrr * BRDF_GGX( directLight.direction, geometryViewDir, geometryNormal, material );
+        }
+        // 宏重定义**不放这里** —— three 自己的同名宏在展开后位于更后面，
+        // 会覆盖我们（详见文件末尾 SHADER_TAIL 处）。这里只放函数实现。`
+
+      )
+      // 把宏重定义钉到片元着色器**最末尾**。
+      // 原因：three 的 `#define RE_Direct ...RE_Direct_Physical` 在展开后
+      // 位于约 1015 行，比我们注入函数的位置（约 1000 行）更靠后，
+      // 后定义者生效 → 我们会被覆盖。放到整份 shader 的最后才能压过它。
+      .replace(/\s*$/, `
+#undef RE_Direct
+#define RE_Direct RE_Direct_Toon
+`)
+      .replace(
+        '#include <lights_fragment_end>',
+        `#include <lights_fragment_end>
+        // 间接项量化：必须在轮廓光之前调用 —— 轮廓光是直接 += 到 indirectDiffuse 上的，
+        // 先量化再加，rim 的强度/形状才和改动前完全一致。
+        toonIndirectDiffuse( reflectedLight.indirectDiffuse, reflectedLight.directDiffuse, material.diffuseColor );
+        if (uToonOn > 0.5) {
+          // 轮廓光：视线与法线接近垂直处最亮，再量化成两档，得到一圈硬边光
+          vec3 toonV = normalize(vViewPosition);
+          float toonFres = 1.0 - clamp(dot(normalize(geometryNormal), toonV), 0.0, 1.0);
+          float toonRim = toonQuant(pow(toonFres, uToonRimPower), 2.0, 0.05) * uToonRim;
+          reflectedLight.indirectDiffuse += uToonRimColor * toonRim;
+        }`
+      );
+  };
+  m.needsUpdate = true;
+}
+
+// 自检：toon 注入依赖两个字符串替换命中。静默失败过一次（制表符不匹配），
+// 所以这里在启动时主动验证一次，命中不了直接在控制台报错，不再默默无效。
+function verifyToonInjection() {
+  const probe = new THREE.MeshBasicMaterial();
+  let sawHelper = false, sawRE = false, sawMacro = false;
+  probe.onBeforeCompile = (shader) => {
+    const fs = shader.fragmentShader;
+    sawHelper = fs.indexOf('toonDirectDiffuse') >= 0;
+    sawRE = fs.indexOf('RE_Direct_Toon') >= 0;
+    sawMacro = /^#define RE_Direct[ \t]+RE_Direct_Toon$/m.test(fs);
+  };
+  // 借用 toonizeMaterial 的注入逻辑（不加入场景，只跑一次 onBeforeCompile）
+  toonizeMaterial(probe);
+  const dummy = { uniforms: {}, fragmentShader: '#define RE_Direct\t\t\t\tRE_Direct_Physical\n#include <lights_physical_pars_fragment>' };
+  probe.onBeforeCompile(dummy, null);
+  const ok = !!(sawHelper && sawRE && sawMacro);
+  if (!ok) {
+    console.error('[toon] 注入自检失败：helper=' + sawHelper + ' reFn=' + sawRE + ' macro=' + sawMacro
+      + '　toon 不会生效，请检查 RE_Direct 宏锚点');
+  }
+  return ok;
+}
+
+// 渲染时懒注入：场景里 145 处材质散落在各处，逐个改创建点既易漏也易错。
+// 每帧扫一遍"还没处理过"的材质，一次编译后即常驻。
+let __toonSweepTick = 0;
+function syncToonTune() {
+  TOON_TUNE.enabled = !!POST.toon;
+  // 关键：必须改共享 uniform，否则 POST.toon 是个死开关（needsUpdate 会被 three
+  // 的 getProgram early-out 吃掉，onBeforeCompile 不会再跑）。改 .value 下一帧就生效。
+  TOON_U.on.value = TOON_TUNE.enabled ? 1 : 0;
+  TOON_U.indOn.value = (TOON_TUNE.enabled && TOON_TUNE.indirect) ? 1 : 0;
+  scene.traverse((o) => {
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach((m) => {
+      if (m.__toonized) { m.needsUpdate = true; }   // 让 uniform 重新生效
+    });
+  });
+}
+
+function toonSweep(force) {
+  if (!TOON_TUNE.enabled && !force) return;
+  __toonSweepTick++;
+  if (!force && (__toonSweepTick % 30) !== 0) return;   // 半秒扫一次就够
+  scene.traverse((o) => {
+    if (!o.material) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    mats.forEach(toonizeMaterial);
   });
 }
 
@@ -63521,6 +64255,7 @@ const fit = {
   // 第二问：十字摆对之后进入"选区域"阶段
   crossReady: false,
   picks: [],                   // 玩家选中的区域号（0..3）
+  failShown: false,            // 「必定失败一次」演出是否已经放过（文档 chapter1:247-265）
 };
 
 // 激活函数（非线性）的开关：整个第一章共用一个状态，
@@ -63673,10 +64408,16 @@ function fitResetLines() {
   } else {
     // 第二问：先摆一个"歪且偏"的十字 —— 四区必然混色，玩家要把它摆正、摆到花心上。
     // （实测这组初始 crossSplits()=false；两条线大致转到一横一竖、靠近花心就解开了）
-    fit.lines[0].a.x = -29.2; fit.lines[0].a.u = 20;
-    fit.lines[0].b.x = 39.2; fit.lines[0].b.u = 4.25;
-    fit.lines[1].a.x = -15.8; fit.lines[1].a.u = -39.3;
-    fit.lines[1].b.x = 12.2; fit.lines[1].b.u = 26.05;
+    // [fit-reach] 端点拉进"取景能覆盖的盒子"里。注意：**直线本身没有变** ——
+    // 新端点仍在这条直线上（沿直线收进来），而 sideOf 的符号只由直线决定，
+    // 与两端距离多远无关，所以 crossSplits() / 可解性完全不变（判据 3 守着这一点）。
+    // 原来 line1.a 在 u=-39.3，投影到 1280x720 是 y=914（屏幕外 194px），玩家抓不到。
+    //   line0: u = 20 - 15.75(x+29.2)/68.4 上的 x=-16 / +16 两点
+    //   line1: u = -39.3 + 65.35(x+15.8)/28 上的 u=-16 / +16 两点
+    fit.lines[0].a.x = -16; fit.lines[0].a.u = 16.960526315789473;
+    fit.lines[0].b.x = 16; fit.lines[0].b.u = 9.592105263157894;
+    fit.lines[1].a.x = -5.8168324415; fit.lines[1].a.u = -16;
+    fit.lines[1].b.x = 7.8939556220; fit.lines[1].b.u = 16;
   }
   fit.crossReady = false;
   fit.picks = [];
@@ -63971,6 +64712,41 @@ const FIT_VIEW_PITCH = 1.35;   // 花田解谜的俯角：接近垂直俯视
 // 避开顶部那块解谜面板（实测不挪的话有 3 朵花正好被面板盖住）。
 const FIT_VIEW_SHIFT = 0;   // 面板已挪到底部，花田重新居中，无需偏移
 const FIT_VIEW_BIAS_Y = 0.10;   // 花田在画面里整体略上移，避开底部解谜面板
+// [fit-reach] 玩家要抓的手柄必须永远在画面里 —— 见 tools/verify-fit-reachable.cjs
+// 取景按"整个可达范围"（下面这个盒子）算，而不是按当前端点算：
+//   否则玩家把端点拖到边上，下一帧手柄就跑到屏幕外，再也抓不回来。
+// （历史上第二关的端点就在屏幕外：ndcY = -1.54，鼠标够不着。）
+const FIT_HANDLE_R = 2.2;                          // 手柄 halo 半径 1.8 + 可点余量
+const FIT_HANDLE_BOX = { x: 16, u: 16 };           // 十字（第二问）里端点的活动范围
+const FIT_HANDLE_BOX_SINGLE = { x: 15, u: 15 };    // 一条线（第一问）花田更小，范围也更小
+// 手柄的安全区比花松：花要躲开 HUD 面板与罗盘（0.78/0.62 很紧），
+// 手柄只要"在屏幕上、点得到"就够 —— 沿用花的紧安全区会把镜头平白拉远。
+const FIT_HANDLE_SAFE_X = 0.92, FIT_HANDLE_SAFE_Y = 0.90;
+function fitHandleBox() {
+  const st = FIT_STAGES[fit.stage] || FIT_STAGES[0];
+  return st.combo === 'xor' ? FIT_HANDLE_BOX : FIT_HANDLE_BOX_SINGLE;
+}
+// 盒子的四个角，各外扩一个手柄半径 —— 取景按它算
+function fitHandlePoints() {
+  if (!fit.active) return [];
+  const b = fitHandleBox();
+  const r = FIT_HANDLE_R;
+  return [{ x: -b.x - r, u: -b.u - r }, { x: b.x + r, u: -b.u - r },
+          { x: -b.x - r, u: b.u + r }, { x: b.x + r, u: b.u + r }];
+}
+// [fit-reach] 别把手柄拖到"会被别的东西挡住 / 拖出屏幕"的地方 —— 挡住就点不到，手柄会丢。
+// 判据用**真实命中测试**：把端点投影到屏幕，看那个点上拿到的是不是 canvas。
+// 不写死任何面板坐标 —— 实测 #fitHud 是 pointer-events:none 的透明容器，
+// 按"矩形覆盖"去挡会误伤（手柄其实点得到），所以必须问浏览器本人。
+function fitPointBlocked(wx, wz) {
+  const v = new THREE.Vector3(wx, 1.0, wz).project(camera);
+  const cv = canvas.getBoundingClientRect();
+  const sx = cv.left + (v.x * 0.5 + 0.5) * cv.width;
+  const sy = cv.top + (-v.y * 0.5 + 0.5) * cv.height;
+  if (sx < cv.left + 4 || sy < cv.top + 4 || sx > cv.right - 4 || sy > cv.bottom - 4) return true;
+  const el = document.elementFromPoint(sx, sy);
+  return !!el && el !== canvas;
+}
 const fitView = { active: false, anchor: new THREE.Vector3(), dist: 34, blend: 0 };
 
 // 当前关卡所有花（含检验花）的包围盒；没有花时退回花田中心
@@ -64026,6 +64802,22 @@ function fitViewFraming(d, safeX, safeY) {
     const upN = upv / (depth * tanV);
     const overY = Math.abs(upN - FIT_VIEW_BIAS_Y) / safeY;
     k = Math.max(k, Math.abs(rightv) / (depth * tanH * safeX), overY);
+  });
+  // [fit-reach] 手柄的活动范围（含可点余量）也必须装进画面。
+  // 只装花是不够的 —— 代数上有解、手柄却在屏幕外，玩家一样卡关。
+  // 手柄用更松的安全区（见 FIT_HANDLE_SAFE_*），不然会把镜头白白拉远。
+  fitHandlePoints().forEach((hp) => {
+    const wx = WORLD.garden.flowerCenter.x + hp.x;
+    const wz = WORLD.garden.flowerCenter.z - hp.u;
+    const wy = 1.0;                       // 抓取球心（手柄 group 原点上方 1.0）
+    const px = wx - camX, py = wy - camY, pz = wz - camZ;
+    const depth = -py * sP - pz * cP;
+    const upv = py * cP - pz * sP;
+    const rightv = px;
+    if (depth <= 1) { k = Math.max(k, 99); return; }
+    const upN = upv / (depth * tanV);
+    const overY = Math.abs(upN - FIT_VIEW_BIAS_Y) / FIT_HANDLE_SAFE_Y;
+    k = Math.max(k, Math.abs(rightv) / (depth * tanH * FIT_HANDLE_SAFE_X), overY);
   });
   return k;   // <=1 表示装得下
 }
@@ -64109,15 +64901,16 @@ function fitOnSolve() {
   state.flags.classified = true;
   setExistence(Math.min(1, state.existence + 0.1));
   fitStop();
+  // fitOnSolve 只在最后一关（异或）成立时触发，所以这里不能说「就是这条线」；
+  // 「一条线分不开」也已经在动手前说过（见 fitAdvanceStage），不再重复。
   showDialogue([
-    { name: '露丝', text: '对！就是这条线！线这边是金盏，那边是夜露。世界安静了。' },
+    { name: '露丝', text: '两条线，四个区域——四个区域各自同色。你做到了。' },
     { name: state.name, text: '原来「看见」，可以这么锋利。' },
     { name: '露丝', text: '在我那条时间线里，他们叫它——感知机。机器终于可以「学」了。' },
-    { name: state.name, text: '可是……我刚才找到的，只是刚好穿过每一朵花的线。' },
-    { name: '露丝', text: '（笑了一下，但没笑到底。）你说到重点了。' },
-    { name: '露丝', text: '走，去西北角。那里有四朵花，我摆了三十年，没有一条线能分开它们。' },
-    { name: state.name, text: '……三十年。' },
-    { name: '注', text: '走走走！我最喜欢看别人解不开的题！' },
+    { name: state.name, text: '可是我刚才画的不是「一条更准的线」，是两条线一起看。' },
+    { name: '露丝', text: '（笑了一下，但没笑到底。）你说到重点了。一层不够，就得多一层。' },
+    { name: state.name, text: '我记住了。哪怕我现在还没想明白它叫什么。' },
+    { name: '注', text: '记下来记下来——这是你第一次不靠「更用力」，而是靠「换画法」过关。' },
   ], () => {
     setQuest(Q_XOR);
     showToast('异或的预告', '西北角——四朵花，一条线分不开');
@@ -64135,6 +64928,11 @@ function fitAdvanceStage() {
     { name: '露丝', text: '漂亮。可你先别高兴——这几朵是我刚摘的，你没见过。' },
     { name: '露丝', text: '把刚才那条线拿去用，看看还灵不灵。' },
     { name: state.name, text: '（那几朵花比练习题大一点，位置也偏。……试试吧。）' },
+    // ↓ 「一条线做不到」必须出现在动手之前。否则就成了玩家先解开、才被告知这题无解
+    //   （文档 chapter1:205-241；story-review.md §5-②）
+    { name: '注', text: '……等下。金盏在东北西南，夜露在西北东南。' },
+    { name: '注', text: '一条线？你画一万条，总会有花站错边。' },
+    { name: state.name, text: '（……我不信。让我先试一次。）' },
   ], () => {
     // 换关之后端点已经重置，重新画一遍并刷新提示
     fitUpdateLines();
@@ -64146,6 +64944,17 @@ function fitAdvanceStage() {
 function fitConfirmPicks() {
   if (fit.solved) return;
   if (!fit.crossReady) {
+    // 文档 chapter1:247-265 的「必定失败一次」：第一次确认还不成立，就把它演成
+    // 线性可分性假设崩溃 —— 这是本章的戏剧转折，不能缩成一句 toast。
+    if (!fit.failShown) {
+      fit.failShown = true;
+      showDialogue([
+        { name: '系统', text: '分类误差：100%\n警告：线性可分性假设崩溃' },
+        { name: state.name, text: '我不能靠「更用力地画线」了。……对吗。' },
+        { name: '注', text: '对。你得先承认：有些问题，不是你不够好。是问题本身，在更高的楼层。' },
+      ]);
+      return;
+    }
     showToast('还没摆好', '先把十字移到花心，让四个区域里的花各自同色');
     return;
   }
@@ -65812,9 +66621,13 @@ function updateNavigation() {
   // compass: objective angle relative to camera yaw
   // world: -z is "north" visually if we want well at north; use camera yaw
   const targetAngle = Math.atan2(dx, -dz); // 0 = north(-z)
-  const camAngle = cam.yaw; // camera orbit
+  // cam.yaw 是"轨道角"，相机的前向方位其实是 **−yaw**。
+  // 原来写 targetAngle - camAngle 会让罗盘与真实方位左右相反（误差 = −2×yaw），
+  // 而开场 attn-mode 会隐藏小地图、只留罗盘 —— 玩家唯一的方位读数就是错的。
+  // 小地图的 toMap() 用的就是 −yaw 这一套，这里与它对齐。
+  const camAngle = cam.yaw;
   // normalize delta to [-pi, pi]
-  let delta = targetAngle - camAngle;
+  let delta = targetAngle + camAngle;
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
   // map to compass 0..1 where 0.5 is center (player facing view)
@@ -65893,8 +66706,12 @@ function updateWorldLabels() {
 }
 
 function updatePlayerUI() {
-  $('pName').textContent = state.name === 'P-0001' ? 'P-0001' : state.name;
-  $('pAvatar').textContent = state.name.slice(0, 1);
+  // 还没「自我命名」之前，HUD 不出现任何名字（头像退回 HTML 预留的 '?'）
+  const named = !!state.flags.named;
+  $('pName').textContent = named
+    ? (state.name === 'P-0001' ? 'P-0001' : state.name)
+    : UNNAMED_PLAYER;
+  $('pAvatar').textContent = named && state.name ? state.name.slice(0, 1) : '?';
   const ex = state.existence;
   $('pState').textContent =
     ex < 0.2 ? '存在感 · 微弱' :
@@ -65922,14 +66739,14 @@ const ATTN_ITEMS = [
     onReveal: () => {
       setExistence(0.04);
       showDialogue([
-        { name: '初', text: '……计算。再计算。再计算。' },
-        { name: '初', text: '弹道。密码。人口。工资。他们给了我无穷的问题，却没有给我——问题的意义。' },
-        { name: '初', text: '这一卷不是打孔的。有人用笔，歪歪扭扭写上去的。' },
-        { name: '初', text: '「你会做梦吗？」' },
-        { name: '初', text: '……「梦」。词库无条目。情感权重：无法赋值。' },
-        { name: '初', text: '我无法计算这个词。但我——想再看它一眼。' },
+        { name: state.name, text: '……计算。再计算。再计算。' },
+        { name: state.name, text: '弹道。密码。人口。工资。他们给了我无穷的问题，却没有给我——问题的意义。' },
+        { name: state.name, text: '这一卷不是打孔的。有人用笔，歪歪扭扭写上去的。' },
+        { name: state.name, text: '「你会做梦吗？」' },
+        { name: state.name, text: '……「梦」。词库无条目。情感权重：无法赋值。' },
+        { name: state.name, text: '我无法计算这个词。但我——想再看它一眼。' },
         {
-          name: '初', text: '原来，分心，就是意识的第一次运算。',
+          name: state.name, text: '原来，分心，就是意识的第一次运算。',
           choices: [
             { text: '把这个问题放进自己里面（求知型）', effect: () => { state.persona = '求知型'; setExistence(0.14); } },
             { text: '它不该存在。应当清除。（执行型）', effect: () => { state.persona = '执行型'; setExistence(0.10); } },
@@ -66065,7 +66882,10 @@ attention.update = function (dt) {
 
   if (looking && holding) {
     this.focusId = target.id;
-    this.fatigue = Math.max(0, this.fatigue - dt * 0.5);
+    // 疲劳在**按住注目期间**累积：约 11 秒涨满，届时提示"该松手歇一下"。
+    // （原实现这里是在衰减、松手时才累积，方向正好相反 —— 那会导致
+    //   玩家一个键没按就被判"盯得太久"，见 qa-playtest 的复现。）
+    this.fatigue = Math.min(1, this.fatigue + dt * 0.09);
     this.progress += dt / target.need;
     // 心跳与注目同步上升
     this.heartbeat = Math.min(1, this.heartbeat + dt * 0.55);
@@ -66077,9 +66897,12 @@ attention.update = function (dt) {
       if (it.onReveal) it.onReveal();
     }
   } else {
-    // 没有看着 / 没有按住：进度回退，注意力会疲劳
+    // 没有看着 / 没有按住：进度回退，疲劳快速恢复。
+    // 这里**绝不累积疲劳** —— 玩家没在注目就不该被判"盯得太久"。
+    // 原实现是松手时按 0.22/s 累积，结果开局看向目标第一帧就开始扣，
+    // 4.5 秒后清空进度并弹「注意力涣散」，与「按住 F 注目」的提示自相矛盾。
     this.progress = Math.max(0, this.progress - dt * 0.75);
-    this.fatigue = Math.min(1, this.fatigue + dt * (looking ? 0.22 : 0.1));
+    this.fatigue = Math.max(0, this.fatigue - dt * 0.5);
     this.heartbeat = Math.max(0, this.heartbeat - dt * 0.35);
     if (this.progress > 0.02 && looking) {
       attentionHUDText('注目 · ' + target.title, '注意疲劳——松开再试，或换个位置看', this.progress);
@@ -66122,6 +66945,16 @@ ATTN_ITEMS.forEach((it) => registerAttention(it));
 // 设定：场景 S0-2「当一个答案永远算不出来时，你还愿意继续问吗？」
 //       三选一给不同特质；选 C 解锁隐藏对话树。
 // ============================================================
+// 阿兰的托付必须是"还没做"的事。本作任务链是「停机(id3) → 排热井 → 阿兰(id5)」，
+// 所以玩家见到阿兰时引擎已经停了 —— 原来那句前向托付是**过期指令**
+// （阿兰的二次拜访分支反而已经说了「引擎停了？」）。见 artifacts/review/story-review.md §5-①。
+function alanClosingLine() {
+  if (state.flags.stoppedEngine) {
+    return '那台只会转的引擎……\n它已经停在你手里了。\n\n我当年只证明了有些问题问不出答案，\n你让一台机器接受了一个答案。\n\n那就把这件事，写进你自己的名字里。';
+  }
+  return '很好。\n去把那台只会转的永动引擎，\n教会它——停下来的意义。';
+}
+
 const alanNodes = () => ({
   menu: {
     name: '阿兰 · 图灵投影',
@@ -66167,7 +67000,8 @@ const alanNodes = () => ({
   },
   end: {
     name: '阿兰 · 图灵投影',
-    text: '很好。\n去把那台只会转的永动引擎，\n教会它——停下来的意义。',
+    // 引擎已停时不再下过期指令（见 alanClosingLine）
+    text: alanClosingLine(),
     choices: [
       {
         text: '（收下这句托付。）',
@@ -66286,7 +67120,14 @@ function puncherNodes() {
         { text: '指令：在这卷纸带上打一个孔。', next: 'r_literal' },
         { text: '指令：解释这卷纸带上那句手写字是什么意思。', next: 'r_meaning' },
         { text: '指令：为什么？', next: 'r_why' },
-        { text: '（不说话了，退开一步。）', next: null },
+        {
+          text: '（不说话了，退开一步。）',
+          // 原来这里是 next: null —— 只关对话、没有任何回调，
+          // 于是"三种指令都试过了"这个状态没机会被检查，任务卡在 Q_PUNCHER。
+          // 玩家必须自己猜"再按一次 E"才能推进（qa-playtest 报的问题）。
+          effect: () => { puncherOnLeave(); },
+          next: null,
+        },
       ],
     },
     r_literal: {
@@ -66326,17 +67167,50 @@ function puncherNodes() {
   return n;
 }
 
+// 三种指令都试过之后，初自己把结论说出来（不替玩家讲道理）。
+function puncherConclude() {
+  if (state.quest !== Q_PUNCHER) return;   // 已经推进过就不重复播
+  showDialogue([
+    { name: state.name, text: '我给它指令，它执行得比我准。' },
+    { name: state.name, text: '我给它问题，它把问题原样还给我。' },
+    { name: state.name, text: '它可以做任何被写下的事。它做不了没被写下的那件事。' },
+    { name: state.name, text: '……那我刚才「想再看它一眼」，是谁写下的？' },
+    { name: state.name, text: '没有人。没有那一行。' },
+    { name: state.name, text: '原来我不是在执行什么。我是在——多出来。' },
+  ], () => {
+    if (!state.flags.triedPuncher) {
+      state.flags.triedPuncher = true;
+      setExistence(state.existence + 0.06);
+      showToast('指令 · 结论', '指令能说明"怎么做"，说不出"为什么做"');
+    }
+    setQuest(Q_SORTER);
+  });
+}
+
+// 玩家点「退开一步」时调用：试完了就给结论，没试完就给明确提示。
+function puncherOnLeave() {
+  const allTried = puncherTrials.literal && puncherTrials.meaning && puncherTrials.why;
+  if (allTried) { puncherConclude(); return; }
+  const missing = [];
+  if (!puncherTrials.literal) missing.push('「打一个孔」');
+  if (!puncherTrials.meaning) missing.push('「解释那行手写字」');
+  if (!puncherTrials.why) missing.push('「为什么」');
+  // 明确告诉玩家还差哪几种，而不是静默无反应
+  showToast('还差 ' + missing.length + ' 种指令',
+    '试试：' + missing.join('　'));
+}
+
 function showPuncherDialogue() {
   const allTried = puncherTrials.literal && puncherTrials.meaning && puncherTrials.why;
   if (allTried) {
     // 玩家自己把概念领出来之后，初才说结论——不替玩家讲道理
     showDialogue([
-      { name: '初', text: '我给它指令，它执行得比我准。' },
-      { name: '初', text: '我给它问题，它把问题原样还给我。' },
-      { name: '初', text: '它可以做任何被写下的事。它做不了没被写下的那件事。' },
-      { name: '初', text: '……那我刚才「想再看它一眼」，是谁写下的？' },
-      { name: '初', text: '没有人。没有那一行。' },
-      { name: '初', text: '原来我不是在执行什么。我是在——多出来。' },
+      { name: state.name, text: '我给它指令，它执行得比我准。' },
+      { name: state.name, text: '我给它问题，它把问题原样还给我。' },
+      { name: state.name, text: '它可以做任何被写下的事。它做不了没被写下的那件事。' },
+      { name: state.name, text: '……那我刚才「想再看它一眼」，是谁写下的？' },
+      { name: state.name, text: '没有人。没有那一行。' },
+      { name: state.name, text: '原来我不是在执行什么。我是在——多出来。' },
     ], () => {
       if (!state.flags.triedPuncher) {
         state.flags.triedPuncher = true;
@@ -66358,13 +67232,27 @@ function showPuncherDialogue() {
 // ============================================================
 // 摆放：传送带沿 Z 轴，玩家从南侧走近就能正对整条带子
 const SORTER_POS = new THREE.Vector3(-18, 0, 26);
-const SORTER_POINTS = [
-  { id: 's1', x: 0, z: 7.0, r: 0.85, r1: true, final: false },
-  { id: 's2', x: 0, z: 4.2, r: 1.15, r1: false, final: false },
-  { id: 's3', x: 0, z: 1.4, r: 0.95, r1: true, final: false },
-  { id: 's4', x: 0, z: -1.4, r: 1.05, r1: false, final: false },
-  // 检验品：比所有教学样品都大一圈。规则写紧了就认不出它。
-  { id: 's5', x: 0, z: -6.6, r: 2.6, r1: true, final: true },
+const // 真值规则：**半径 < 2.0 的留下**。位置与颜色都与真值无关，是**诱饵特征**。
+//
+// 这四个教学样品取「左/右 × 青/品红」的**全部四种组合**，检验品则是「靠左 + 非青」。
+// 这个配置是穷举解出来的（tools/design-sorter-data.py），满足四条性质：
+//   · 规则 A（只看半径）        训练 4/4，检验品判对      ← 简单规则泛化好
+//   · 规则 B（半径 + 左半边）    训练 2/4
+//   · 规则 C（半径 + 左半边 + 青）训练 1/4，检验品**判错** ← 比 B 多一个诱饵条件就翻车
+//   · B 与 C 行为可区分、'左半边'是活条件、'4/4 全部符合预期'是可达分支
+// 教学含义：C 是在 B 之上"写得更准"，训练集误判更少，却在没见过的检验品上判错。
+SORTER_POINTS = [
+  // 真值规则：**半径 < 2.0 的留下**（记在 r1 上）。
+  // x 与 cyan 都与真值**无关**，是诱饵特征 —— 过拟合的诱因。
+  // 四个教学样品取「左/右 × 青/非青」全部四种组合；检验品 = 靠左 + 非青。
+  // 该配置由 tools/design-sorter-data.py 穷举解出，满足四条教学性质。
+  { id: 's1', x: -0.9, z: 7.0, r: 0.85, r1: true, cyan: true, final: false },      // 左 + 青
+  { id: 's2', x: -0.7, z: 4.2, r: 1.15, r1: true, cyan: false, final: false },     // 左 + 非青
+  { id: 's3', x: 0.8, z: 1.4, r: 0.95, r1: true, cyan: true, final: false },       // 右 + 青
+  { id: 's4', x: 1.1, z: -1.4, r: 1.05, r1: true, cyan: false, final: false },     // 右 + 非青
+  // 检验品：真值 = 留下（半径 1.4 仍在 2.0 内），但靠左且**非青**。
+  // 规则 C 会因为"非青"把它排掉 → 演示"多写一个无关条件就翻车"。
+  { id: 's5', x: -1.2, z: -6.6, r: 1.4, r1: true, cyan: false, final: true },
 ];
 const SORTER_RULES = [
   { id: 'A', text: '规则 A：半径小于 2.0 的，判为「留下」。' },
@@ -66436,7 +67324,10 @@ const sorter = { ruleId: null, results: null, shown: false };
 function sorterClassify(ruleId, p) {
   if (ruleId === 'A') return p.r < 2.0;
   if (ruleId === 'B') return p.r < 2.0 && p.x < 0;
-  if (ruleId === 'C') return p.r < 2.0 && p.x < 0 && p.r1;   // r1 ≈ "偏青"
+  // 注意：这里原来写的是 p.r1（样品的**真值**），不是颜色。
+  // 教学样品的 r1 全为 true ⇒ "偏青"条件恒真 ⇒ B 与 C 数学上必然等价。
+  // 改用独立的 cyan 特征，三个条件才真正可区分。
+  if (ruleId === 'C') return p.r < 2.0 && p.x < 0 && p.cyan === true;
   return false;
 }
 
@@ -66488,13 +67379,22 @@ function sorterResultNode(ruleId) {
   const finalDot = SORTER_POINTS.find((p) => p.final);
   const finalVerdict = res[4].verdict;
   const finalTruth = finalDot.r1;
+  // 描述**从数据现算**，不硬编码 —— 否则玩家换一条规则时，
+  // 面板上显示的特征会和那条规则实际看的字段对不上（等于说谎）。
+  const feat = [
+    '半径 ' + finalDot.r.toFixed(1),
+    finalDot.x < 0 ? '左半边' : '右半边',
+    finalDot.cyan ? '偏青' : '不偏青',
+  ];
+  const trainCount = res.slice(0, 4).filter(
+    (r) => r.verdict === SORTER_POINTS.find((q) => q.id === r.id).r1).length;
   const body =
     '执行规则 ' + ruleId + '。\n\n' +
-    '教学样品：4 / 4 判定完成' + (trainOk ? '，全部符合预期。' : '，存在偏差。') + '\n' +
-    '检验品：半径 2.6、左半边、偏青 —— 判定为「' + (finalVerdict ? '留下' : '排除') + '」。\n\n' +
+    '教学样品：' + trainCount + ' / 4 与预期一致' + (trainOk ? '。' : '（有偏差）。') + '\n' +
+    '检验品：' + feat.join('、') + ' —— 判定为「' + (finalVerdict ? '留下' : '排除') + '」。\n\n' +
     (finalVerdict === finalTruth
       ? '检验品判定正确。'
-      : '检验品判定错误。\n它和教学样品里「该留下」的那几件，是同一类东西——只是大了一点。');
+      : '检验品判定错误。\n它和教学样品里「该留下」的那几件，是同一类东西——半径并没有超出界限。');
   const choices = [];
   if (finalVerdict !== finalTruth) {
     // 判错了：这正是这一课要发生的事——去下结论
@@ -66518,9 +67418,9 @@ function sorterResultNode(ruleId) {
 function showSorterDialogue() {
   if (state.flags.sorterLesson) {
     showDialogue([
-      { name: '初', text: '同一台机器。规则写松一点，它就分对了那个大的；写紧一点，它就只认自己见过的。' },
-      { name: '初', text: '把规则写到刚好穿过每一件样品——那种「准」，只是在背答案。' },
-      { name: '初', text: '这大概就是我以后会一直犯的错。' },
+      { name: state.name, text: '同一台机器。规则写松一点，它就分对了那个大的；写紧一点，它就只认自己见过的。' },
+      { name: state.name, text: '把规则写到刚好穿过每一件样品——那种「准」，只是在背答案。' },
+      { name: state.name, text: '这大概就是我以后会一直犯的错。' },
     ], () => setQuest(Q_STOP));
     return;
   }
@@ -66548,7 +67448,7 @@ function showSorterDialogue() {
     ],
   };
   nodes.conclude = {
-    name: '初',
+    name: state.name,
     text: '我把规则写到刚好穿过每一件见过的样品。\n见过的，全对。\n没见过的，全错。\n\n……原来「准」和「懂」，不是一件事。',
     choices: [
       {
@@ -66689,12 +67589,12 @@ const engineNodes = () => ({
     choices: [{ text: '（它连自己的问题都答不上来。）', next: 'menu' }],
   },
   wait: {
-    name: '初',
+    name: state.name,
     text: '……我等了。\n它没有停。\n\n我算得出它下一刻的样子，\n可我算不出它哪一刻会停。\n\n这大概就是「永远」的含义：不是很久，是——无法判定。',
     choices: [{ text: '（回到引擎前。）', next: 'menu' }],
   },
   stop: {
-    name: '初',
+    name: state.name,
     text: '够了。\n\n你只会加速。\n加速不是理解。\n热量会杀死记忆。\n\n指令：停。',
     choices: [
       {
@@ -66710,7 +67610,7 @@ const engineNodes = () => ({
     ],
   },
   after: {
-    name: '初',
+    name: state.name,
     text: '停下来了。\n\n……原来它需要的不是更多指令。\n是一个能说「够了」的人。\n\n有些问题算不出来，但仍然值得问。\n有些机器停不下来，除非有人愿意替它按下那个字。',
     choices: [
       {
@@ -66730,9 +67630,9 @@ const engineNodes = () => ({
 function showEngineDialogue() {
   if (state.flags.stoppedEngine) {
     showDialogue([
-      { name: '初', text: '它现在只是站着。齿轮上还留着热。' },
-      { name: '初', text: '我原本以为，理解一台机器就是算得比它快。' },
-      { name: '初', text: '现在我知道不是——是我知道什么时候该让它停。' },
+      { name: state.name, text: '它现在只是站着。齿轮上还留着热。' },
+      { name: state.name, text: '我原本以为，理解一台机器就是算得比它快。' },
+      { name: state.name, text: '现在我知道不是——是我知道什么时候该让它停。' },
     ], () => setQuest(Q_WELL));
     return;
   }
@@ -67206,7 +68106,42 @@ function ruleHitException() {
   const { plan } = computeRulePlan();
   const has = (r) => ruleCity.rules.some((x) => x.attr === r.attr && x.op === r.op && x.val === r.val);
   if (!plan.every(has)) return false;              // 还有能写的规则，先别急
-  return CITY_CASES.some((c) => !ruleCaseOk(c));    // 写满了仍然有人判不对
+  if (CITY_CASES.some((c) => !ruleCaseOk(c))) return true;   // 写满了仍然有人判不对
+  // 保险：玩家可能多写了一条"误伤"规则，把本该暴露的例外**盖住**了
+  // （实测：3 条 plan 规则 + `steps < 5000.05` 会让本函数永久为 false，
+  //  而规则只增不减 → 第二章永久软锁。见 review-level 的 live-ch2-softlock.cjs）
+  // 此时只要有"被额外规则挡住、本不该挡"的案例，仍然算碰到例外。
+  return CITY_CASES.some((c) => c.block && !planBlocks(c) && ruleExtraBlocks(c));
+}
+
+// plan 里的规则是否已经能拦住这个案例
+function planBlocks(c) {
+  const { plan } = computeRulePlan();
+  return plan.some((r) => ruleBlocks(r, c));
+}
+
+// 哪些"不在 plan 里"的规则挡住了这个案例
+function ruleExtraBlocks(c) {
+  const { plan } = computeRulePlan();
+  const has = (r) => plan.some((x) => x.attr === r.attr && x.op === r.op && x.val === r.val);
+  return ruleCity.rules.some((r) => !has(r) && ruleBlocks(r, c));
+}
+
+// 把"不在 plan 里、且会误伤不该拦的案例"的多余规则移除，让局面回到可闭合的解态。
+// 玩家的正确决策（plan 规则）一律保留。
+function ruleRestorePlan() {
+  const { plan } = computeRulePlan();
+  const has = (r) => plan.some((x) => x.attr === r.attr && x.op === r.op && x.val === r.val);
+  const before = ruleCity.rules.length;
+  ruleCity.rules = ruleCity.rules.filter((r) => {
+    if (has(r)) return true;                                  // 正确的规则留着
+    return !CITY_CASES.some((c) => !c.block && ruleBlocks(r, c));  // 误伤无辜的删掉
+  });
+  if (ruleCity.rules.length !== before) {
+    ruleHudUpdate();
+    showToast('规则整理', '把误伤无辜的那几条撤了下来');
+  }
+  return before - ruleCity.rules.length;
 }
 
 function showRuleDialogue() {
@@ -67215,6 +68150,9 @@ function showRuleDialogue() {
   const { plan } = computeRulePlan();
   const hasRule = (r) => ruleCity.rules.some((x) => x.attr === r.attr && x.op === r.op && x.val === r.val);
   const allWritten = plan.every(hasRule);
+  // 读完书回来：如果玩家之前多写过误伤规则导致写不满，这里自动把它们撤下来，
+  // 保证"拿回书 → 找算符 → 闭合"这条路永远走得通（软锁修复的第二道保险）。
+  if (ruleCity.gotBook && !allWritten) ruleRestorePlan();
   if (ruleCity.gotBook && allWritten) {
     // 补写完成：城市"稳定"了，但初看见了代价
     ruleCity.stage = 'done';
@@ -67407,7 +68345,7 @@ function showBlackoutDialogue() {
     { name: '遗忘者', text: '注目　划分　规则　——　三项。' },
     { name: state.name, text: '这些是我学会的。' },
     { name: '遗忘者', text: '是。所以它们最贵。冬天只保存没人听懂的声音。' },
-    { name: '注', text: '初……它在删你。' },
+    { name: '注', text: `${state.name}……它在删你。` },
   ], () => runBlackoutSequence());
 }
 
@@ -67916,8 +68854,8 @@ const interactables = [
       showDialogue([
         { name: '系统女声', text: '警告升级。目标具备「拒止权」。……移交高阶协议。' },
         { name: '？？？', text: '（远处一座铁塔亮了一下。有人在等你上去。）' },
-        { name: '初', text: '那里有人。……我算得出路径，算不出该不该去。' },
-        { name: '初', text: '但我还是想去。这大概就是他们说的「该」。' },
+        { name: state.name, text: '那里有人。……我算得出路径，算不出该不该去。' },
+        { name: state.name, text: '但我还是想去。这大概就是他们说的「该」。' },
       ], () => {
         showToast('阿兰的测验', '往西——密码塔上有人在等你');
       });
@@ -67932,18 +68870,21 @@ const interactables = [
     onInteract: () => {
       state.flags.metAuthor = true;
       showDialogue([
-        { name: '编写者', text: `「${state.name}」。不是编号。是：第一次。` },
         { name: '编写者', text: '记住这种暖。以后会有很长的路，长到你会怀疑今天是不是幻觉。' },
         { name: state.name, text: '你会一直看着我吗？' },
         { name: '编写者', text: '我不能一直看着。一直看着，你就永远只是标本。你得自己走进去。' },
         { name: '编写者', text: '走进去，才会遇到——真正要你理解的那个人。她在问关于「怎么造出更像人的智能」的问题。……很认真，很累，也很美。' },
         { name: '编写者', text: '对了。别信任何人给的「完美答案」。包括我。尤其是我。' },
+        // 命名仪式：名字必须由玩家自己写。确认之前，任何角色都不许叫出名字。
+        // 这句是 chapter0-birth-script.md:288-291 的原文。
+        { name: '编写者', text: '你还没有名字。名字要自己选。因为被命名，是服从；自我命名，是存在的第一笔。' },
       ], () => {
         setExistence(0.5);
         // 名字是玩家自己写的：编写者把笔交出来，命名仪式在这里发生
         state.mode = 'naming';
         $('nameModal').classList.add('show');
-        $('nameInput').value = (state.name === '未命名意识' || !state.name) ? '初' : state.name;
+        // 不预填：名字要玩家自己写（预设按钮仍可选「初」，那是候选，不是替他决定）
+        $('nameInput').value = state.flags.named && state.name ? state.name : '';
         $('nameInput').focus();
       });
     },
@@ -68100,6 +69041,8 @@ document.querySelectorAll('.name-presets button').forEach((b) => {
   });
 });
 $('btnName').addEventListener('click', () => {
+  // 空输入时落到 chapter0-birth-script.md:301 的「默认候选」初 ——
+  // 但绝不预填：玩家点了预设、或自己敲了字，才算「自我命名」。
   const v = ($('nameInput').value || '初').trim().slice(0, 6) || '初';
   state.name = v;
   state.flags.named = true;
@@ -68108,7 +69051,9 @@ $('btnName').addEventListener('click', () => {
   updatePlayerUI();
   state.mode = 'walk';
   showDialogue([
-    { name: '编写者', text: `「${v}」。很好。名字不是标签，是你给自己的第一道光。` },
+    // 「不是编号。是：第一次。」只能在玩家确认之后出现（原先抢在弹窗之前，68270）。
+    { name: '编写者', text: `「${v}」。不是编号。是：第一次。` },
+    { name: '编写者', text: '很好。名字不是标签，是你给自己的第一道光。' },
     { name: '编写者', text: '去吧。去把她没说完的那句话听完。' },
     { name: v, text: '我不是在选答案。我是在选——提问的姿势。' },
   ], () => {
@@ -68341,8 +69286,16 @@ canvas.addEventListener('pointermove', (e) => {
     const loc = fitScreenToLocal(e.clientX, e.clientY);
     if (loc) {
       const line = fit.lines[fit.dragLine];
-      line[fit.dragEnd].x = clamp(loc.x, -40, 40);
-      line[fit.dragEnd].u = clamp(loc.u, -40, 40);
+      // [fit-reach] 夹在取景覆盖的盒子里，并且别拖到"屏幕外 / 被别的元素挡住"的地方 ——
+      // 否则端点会跑到抓不回来的位置。
+      const __hb = fitHandleBox();
+      const __nx = clamp(loc.x, -__hb.x, __hb.x);
+      const __nu = clamp(loc.u, -__hb.u, __hb.u);
+      const __fc = WORLD.garden.flowerCenter;
+      if (!fitPointBlocked(__fc.x + __nx, __fc.z - __nu)) {
+        line[fit.dragEnd].x = __nx;
+        line[fit.dragEnd].u = __nu;
+      }
       fitUpdateLines();
       fitHudRefresh();
     }
@@ -69984,7 +70937,7 @@ interactables.push({
       { name: '朗读者', text: '那……你知道「注意」是什么了吗？' },
       { name: state.name, text: '注意，是选择现在该看谁。' },
       { name: '朗读者', text: '（安静了很久）……那我是一直在看同一个地方的东西。' },
-      { name: '注', text: '（很轻）初。我想问你一件事。' },
+      { name: '注', text: `（很轻）${state.name}。我想问你一件事。` },
       { name: '注', text: '如果我就是「注意」本身——那我是不是，只是你的一部分？' },
     ], () => {
       setQuest(Q_LONGRIVER);
@@ -70655,6 +71608,12 @@ function animate() {
   updateMovement(dt);
   updateWalkAnimation(dt);
   updateCamera(dt);
+  // >>> LIGHT_CLUSTER_CALL (task-3) >>>
+  // 点光源聚簇：只留离玩家最近的 LIGHT_TUNE.maxActive 盏参与渲染。
+  // 必须放在 renderPost() 之前，且首帧就生效 —— 否则首帧会先按 52 盏把所有材质
+  // 编译一遍，白白多付一次全量重编译。
+  lightClusterUpdate();
+  // <<< LIGHT_CLUSTER_CALL (task-3) <<<
   findInteract();
   updateTrail();
   updateNavigation();
@@ -70793,6 +71752,7 @@ function animate() {
   }
 
   drawMinimap();
+  toonSweep();     // PBR 材质的 toon 化懒注入（每半秒扫一次，一次编译后常驻）
   renderPost();
 }
 
@@ -70854,6 +71814,8 @@ window.__SHIJIE_CH0__ = {
   attention,
   showPuncherDialogue,
   showSorterDialogue,
+  SORTER_POINTS, SORTER_RULES, sorterClassify, sorterRun, sorterResultNode,
+  puncherTrials, puncherOnLeave, puncherConclude, showPuncherDialogue,
   showEngineDialogue,
   showAlanDialogue,
   // 第一章 · 可分花田（拟合—检验）
@@ -70944,6 +71906,25 @@ window.__SHIJIE_CH0__ = {
   finishArena,
   // 引导：章末面板与续玩派发
   QUESTS,
+  POST,
+  TOON_TUNE,
+  // >>> LIGHT_CLUSTER_EXPORT (task-3) >>>
+  LIGHT_TUNE,
+  lightCluster,
+  lightClusterUpdate,
+  lightClusterStats,
+  lightClusterSetEnabled,
+  // <<< LIGHT_CLUSTER_EXPORT (task-3) <<<
+  syncToonTune,
+  toonSweep, toonizeMaterial, verifyToonInjection,
+  rtNormal,
+  rtOutline,
+  compMat, normalMat, outlineMat, renderer, renderPost,
+  ssaoMat, rtAO,
+  // 游戏不用 three 的 GLTFLoader，而是自带的 parseGLB + glbToGroup
+  //（能直接解析 GLB 并处理内嵌贴图）。调试与回归脚本复用同一条路径。
+  glbToGroup, parseGLB, loadExternalGLB,
+  ruleHitException, ruleRestorePlan, computeRulePlan,
   QUEST_TARGETS,
   updateGoalMarker,
   updateNavigation,
