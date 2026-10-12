@@ -66916,6 +66916,38 @@ function setQuest(id) {
   // task-13：换章可能让新的区域变成可见 —— 对「这一章看得见、但还没补过」的实体
   // 再补一次碰撞体（已补过的会被去重跳过，重复调用是幂等的）
   if (typeof autoColliderPass === 'function') autoColliderPass(false);
+
+// ===== 收尾过滤：删掉"挡住了权重盘"的自动碰撞体 =====
+// 权重盘就放在火堆位置上（`weightPlates` 用 fire1/2/3 的坐标），
+// 而火堆被 autoColliderPass 自动补了碰撞体 —— 结果玩家被一圈看不见的盒子
+// 围在盘外，plate0 只有东侧一个 0.6m 的缺口（实测最近可站 2.9m / 交互半径 3.5m）。
+// **火堆本来就不该挡人**（玩家该能从火里走过去捡盘），所以这里把覆盖了盘的自动碰撞体删掉。
+// 只删 autoColliderPass 生成的（带 __auto 标记），不碰手工注册的。
+function pruneCollidersOverPlates() {
+  if (typeof weightPlates === 'undefined' || !weightPlates.length) return 0;
+  const PLATE_CLEAR = 1.2;   // 盘心周围这个半径内不允许有自动碰撞体
+  const isAuto = (c) => c.__auto === true;
+  const covers = (c, px, pz) => {
+    if (c.type === 'circle') return Math.hypot(c.x - px, c.z - pz) < c.r + PLATE_CLEAR;
+    // box：转到局部坐标判断
+    const cos = Math.cos(-(c.rot || 0)), sin = Math.sin(-(c.rot || 0));
+    const lx = (px - c.x) * cos - (pz - c.z) * sin;
+    const lz = (px - c.x) * sin + (pz - c.z) * cos;
+    return Math.abs(lx) < c.hw + PLATE_CLEAR && Math.abs(lz) < c.hd + PLATE_CLEAR;
+  };
+  let removed = 0;
+  for (let i = colliders.length - 1; i >= 0; i--) {
+    const c = colliders[i];
+    if (!isAuto(c)) continue;
+    if (weightPlates.some((wp) => covers(c, wp.pos.x, wp.pos.z))) {
+      colliders.splice(i, 1);
+      removed++;
+    }
+  }
+  return removed;
+}
+try { pruneCollidersOverPlates(); } catch (e) { /* 火场未初始化时安全跳过 */ }
+
   // 第四章：登上摩天楼才显示层数/信号面板
   if (typeof towerHudUpdate === 'function') towerHudUpdate();
   // 章末面板的文案/按钮也跟着进度走（以前是写死的）
