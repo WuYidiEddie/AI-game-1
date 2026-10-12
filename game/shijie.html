@@ -71942,10 +71942,15 @@ function updateMovement(dt) {
   // 前方 10m raycast 什么都没有（qa-playtest 实测），这就是"隐形墙"。
   // 保留 clamp（不能让玩家走出世界），但补上**渐进制动**：距边界 soft 米内线性减速，
   // 玩家先感到阻力、再被挡住，而不是"duang 一下撞到空气"。
-  const BOUND = { B: 120, zMin: -420, soft: 12, hintAt: 0 };
+  // 移动钳制范围 —— 必须覆盖**所有章节**的交互点，否则玩家会被钳在界外、走不到。
+// 各章最远坐标：SEA_POS x=-140、BAR_POS x=+140、TEMPLE_POS z=-520、斗兽场 z=-690。
+// 之前是 B:120 / zMin:-420，导致第五、六、七章的交互点在界外（玩家最多差 100m 到不了）。
+// 注意：进章传送落点也越界，会被立刻钳回 —— 所以这不是"走远一点"的问题，是**走不到**。
+// 现有 verify-chapter5/6/7.cjs 全用 position.set 直接传送，所以回归测不到这一层。
+const BOUND = { B: 150, zMin: -720, zMax: 150, soft: 12, hintAt: 0 };
   const boundEdge = Math.min(
     BOUND.B - Math.abs(player.position.x),
-    BOUND.B - player.position.z,
+    BOUND.zMax - player.position.z,
     player.position.z - BOUND.zMin
   );
   const boundScale = boundEdge >= BOUND.soft ? 1 : Math.max(0.10, boundEdge / BOUND.soft);
@@ -71960,16 +71965,17 @@ function updateMovement(dt) {
   player.position.x = fixed.x;
   player.position.z = fixed.z;
 
-  // bounds — 覆盖第一章花园（到 z≈-200）与第三章寒冬裂谷（到 z≈-410）
-  const B = 120;
-  player.position.x = clamp(player.position.x, -B, B);
-  player.position.z = clamp(player.position.z, -420, B); // z from -420 to +120
+  // bounds —— 统一走 BOUND，不要再在这里写硬编码。
+  // 这里曾经残留一对 `const B = 120` + clamp，而 task-16 另加了 BOUND 对象做软区提示；
+  // 结果"改 BOUND 不生效"（实际生效的是这两行）。同一个概念只能有一处定义。
+  player.position.x = clamp(player.position.x, -BOUND.B, BOUND.B);
+  player.position.z = clamp(player.position.z, BOUND.zMin, BOUND.zMax);
   // task-16：被挡住时必须"看得见为什么" —— 进入边界软区就提示一次（7 秒节流）。
   // 判据要的是"玩家能看出为什么走不过去"，硬 clamp + 一句提示 = 满足；
   // 直接把 clamp 删掉会让玩家跑出世界，那是禁止的。
   {
-    const eX = B - Math.abs(player.position.x);
-    const eZp = B - player.position.z;
+    const eX = BOUND.B - Math.abs(player.position.x);
+    const eZp = BOUND.zMax - player.position.z;
     const eZn = player.position.z - BOUND.zMin;
     const edgeNow = Math.min(eX, eZp, eZn);
     if (edgeNow < BOUND.soft && performance.now() - BOUND.hintAt > 7000) {
