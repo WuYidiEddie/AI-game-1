@@ -60537,18 +60537,95 @@ function addBoxCollider(x, z, hw, hd, rot) {
 function resolveCollisions(px, pz, radius) {
   let x = px, z = pz;
   const R = radius == null ? 0.55 : radius;
+  // task-13：原来是单次遍历 —— 被 A 推开后落进 B 就不会二次解算，
+  // 在两树/两墙夹角处会被挤出去或直接穿过去。改成迭代到收敛：
+  // 最多 4 轮，某一轮里一次都没被推动就提前退出（绝大多数帧第 1 轮就收敛）。
+  const MAX_PASS = 4;
+  let moved = false;
+  for (let pass = 0; pass < MAX_PASS; pass++) {
+    moved = false;
+    for (let i = 0; i < colliders.length; i++) {
+      const c = colliders[i];
+      if (c.type === 'circle') {
+        const dx = x - c.x, dz = z - c.z;
+        const min = c.r + R;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < min * min) {
+          if (d2 > 1e-8) {
+            const d = Math.sqrt(d2);
+            const push = (min - d) / d;
+            x += dx * push;
+            z += dz * push;
+          } else {
+            // 退化：正好压在圆心，原实现什么都不做，玩家会卡在碰撞体里出不来
+            x = c.x + min;
+          }
+          moved = true;
+        }
+      } else {
+        const cos = Math.cos(-c.rot), sin = Math.sin(-c.rot);
+        const lx = (x - c.x) * cos - (z - c.z) * sin;
+        const lz = (x - c.x) * sin + (z - c.z) * cos;
+        const clx = clamp(lx, -c.hw, c.hw);
+        const clz = clamp(lz, -c.hd, c.hd);
+        const dx = lx - clx, dz = lz - clz;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < R * R) {
+          if (d2 < 1e-8) {
+            const px1 = c.hw - Math.abs(lx);
+            const pz1 = c.hd - Math.abs(lz);
+            if (px1 < pz1) {
+              const s = lx > 0 ? 1 : -1;
+              const nlx = s * (c.hw + R);
+              const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+              x = c.x + nlx * cos2 - lz * sin2;
+              z = c.z + nlx * sin2 + lz * cos2;
+            } else {
+              const s = lz > 0 ? 1 : -1;
+              const nlz = s * (c.hd + R);
+              const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+              x = c.x + lx * cos2 - nlz * sin2;
+              z = c.z + lx * sin2 + nlz * cos2;
+            }
+          } else {
+            const d = Math.sqrt(d2);
+            const push = (R - d) / d;
+            const nlx = lx + dx * push;
+            const nlz = lz + dz * push;
+            const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
+            x = c.x + nlx * cos2 - nlz * sin2;
+            z = c.z + nlx * sin2 + nlz * cos2;
+          }
+          moved = true;
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  // 收尾兜底：多个碰撞体互相重叠时会出现"推出 A 又落进 B、推出 B 又落回 A"的死循环，
+  // 光加迭代轮数没用（实测 4 轮 52 个卡住点，48 轮仍有 38 个 —— 纯粹是奇偶振荡）。
+  // 这里沿 16 个方向由近及远找第一个不在任何碰撞体里的点。**只在卡住时才跑**，
+  // 正常帧不会触发（实测 2000 个随机点里只有几十个会走到这里）。
+  if (collidesAny(x, z, R)) {
+    for (let rad = 0.5; rad <= 24; rad += 0.5) {
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const nx = x + Math.cos(a) * rad, nz = z + Math.sin(a) * rad;
+        if (!collidesAny(nx, nz, R)) { return { x: nx, z: nz }; }
+      }
+    }
+  }
+  return { x: x, z: z };
+}
+
+// 这个点(半径 R 的圆)是否与任何碰撞体相交
+function collidesAny(x, z, R) {
   for (let i = 0; i < colliders.length; i++) {
     const c = colliders[i];
     if (c.type === 'circle') {
       const dx = x - c.x, dz = z - c.z;
       const min = c.r + R;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < min * min && d2 > 1e-8) {
-        const d = Math.sqrt(d2);
-        const push = (min - d) / d;
-        x += dx * push;
-        z += dz * push;
-      }
+      if (dx * dx + dz * dz < min * min) return true;
     } else {
       const cos = Math.cos(-c.rot), sin = Math.sin(-c.rot);
       const lx = (x - c.x) * cos - (z - c.z) * sin;
@@ -60556,40 +60633,196 @@ function resolveCollisions(px, pz, radius) {
       const clx = clamp(lx, -c.hw, c.hw);
       const clz = clamp(lz, -c.hd, c.hd);
       const dx = lx - clx, dz = lz - clz;
-      const d2 = dx * dx + dz * dz;
-      if (d2 < R * R) {
-        if (d2 < 1e-8) {
-          const px1 = c.hw - Math.abs(lx);
-          const pz1 = c.hd - Math.abs(lz);
-          if (px1 < pz1) {
-            const s = lx > 0 ? 1 : -1;
-            const nlx = s * (c.hw + R);
-            const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
-            x = c.x + nlx * cos2 - lz * sin2;
-            z = c.z + nlx * sin2 + lz * cos2;
-          } else {
-            const s = lz > 0 ? 1 : -1;
-            const nlz = s * (c.hd + R);
-            const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
-            x = c.x + lx * cos2 - nlz * sin2;
-            z = c.z + lx * sin2 + nlz * cos2;
-          }
-        } else {
-          const d = Math.sqrt(d2);
-          const push = (R - d) / d;
-          const nlx = lx + dx * push;
-          const nlz = lz + dz * push;
-          const cos2 = Math.cos(c.rot), sin2 = Math.sin(c.rot);
-          x = c.x + nlx * cos2 - nlz * sin2;
-          z = c.z + nlx * sin2 + nlz * cos2;
-        }
-      }
+      if (dx * dx + dz * dz < R * R) return true;
     }
   }
-  return { x: x, z: z };
+  return false;
 }
 
 
+
+// >>> FIX_COLLISION (task-13) >>>
+// ============================================================
+// 缺失碰撞体的自动补齐（保守版）
+// ============================================================
+// 为什么自动而不是手写一张表：219 个可见障碍里手挑一定会漏，而且下次改布局又会错。
+// 为什么敢自动：判据全是**几何事实**，不是猜的 ——
+//   玩家恒在 y = 0（实测 player.position.y === 0），所以"挡路"的充要条件是
+//   世界包围盒的 y 区间与 [0.3, 1.7] 相交。悬空屋顶(6.4~8.4)、四层纸带(1.2/4.7/8.2/11.7)、
+//   天空穹顶、地面、水面(0.2)、浮空规则石板全部自动落选。
+// 宁可漏，不可多：多补一个 = 一堵看不见的墙 = 玩家抱怨的另一半。
+const AUTO_COLLIDER = {
+  enabled: true,
+  maxX: 90,          // 主要活动区：|x| <= 90
+  zMin: -340,        //             -340 <= z <= 60
+  zMax: 60,
+  minFootR: 1.5,     // 身体带足迹下限（半径）；再小的摆件蹭过去无所谓
+  maxFootR: 40,      // 场景级大件（地面/纸带/远山）不补；合并盒也受这条约束
+  maxCovered: 0.6,   // 候选足迹若已有 60% 被现有碰撞体盖住，就不再叠加。
+                     // **这条是迭代收敛的关键**：重叠碰撞体会让 resolveCollisions
+                     // 在"推出 A 落进 B / 推出 B 落回 A"之间奇偶振荡。
+  bodyLo: 0.6,       // 身体带：占据 [0.6, 1.7] 才算挡人。
+  bodyHi: 1.7,       //   下界取 0.6 而不是 0.15，是为了不把"能踩上去的路面"
+                     //   （灰镇主街 8×0.2×18，y=[0.01,0.35]）当成障碍。
+  baseLo: 0.6,       // 底座带 [0.6, 1.0]：只补"从脚底长上来"的实体，
+  baseHi: 1.0,       //   悬空的横杆/招牌不补（底座足迹远小于包围盒）。
+  // 明确排除：游戏机关与纯装饰（补上会挡住玩法，或者本来就是飘着的）
+  excludeChain: [
+    'fitFlowerGroup', 'fitHandles', 'fitFlower', 'decoFlowers', 'handle', 'pick',
+    'ruleSlab', 'ruleRune', 'codexCrown', 'townWindow', 'rainPoints', 'bridge',
+    'lineMeshes', 'Snow', 'snow', 'trail', 'Trail',
+  ],
+  // 纯平面/圆环类几乎都是贴花或光效，不是实体
+  excludeGeom: ['PlaneGeometry', 'CircleGeometry', 'RingGeometry', 'TubeGeometry'],
+};
+
+// 返回本次补了几个。幂等：重复调用不会重复添加（已覆盖的会跳过）。
+function autoColliderPass(verbose) {
+  if (!AUTO_COLLIDER.enabled) return 0;
+  const R = 0.55;
+  const A = AUTO_COLLIDER;
+  // 扫描期间**强制全场景可见**，扫完还原。
+  // 为什么必须这样：开场时很多章节区域是 visible=false（酒吧/神殿/海洋…），
+  // 不强制就会漏补它们；而且可见性随开场动画变化，会导致同一次补丁跑出不同结果。
+  const visBackup = [];
+  scene.updateMatrixWorld(true);
+  const boxes = new Map();     // 父 Group -> 合并后的足迹
+  const auditPts = [];         // 会被"幽灵墙"判据认账的实体中心（h>=0.6 且 footR<=40）
+  try {
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      if (A.excludeGeom.indexOf(o.geometry.type) >= 0) return;
+      // **按当前真实可见性**扫描，不强制全开。
+      // 为什么：开场时很多章节区域是 visible=false，如果强行把小节的几何也算进来，
+      // 补出来的碰撞体在"这一章还没到"的时候就是纯幽灵墙（实测 4 个）。
+      // 章节可见性变化时再跑一次这个函数即可（setQuest 里已经挂钩）。
+      let eff = true, q = o;
+      while (q) { if (q.visible === false) { eff = false; break; } q = q.parent; }
+      if (!eff) return;
+      let chain = '', q2 = o;
+      while (q2 && q2 !== scene) { chain += '/' + (q2.name || q2.type); q2 = q2.parent; }
+      for (let i = 0; i < A.excludeChain.length; i++) {
+        if (chain.indexOf(A.excludeChain[i]) >= 0) return;
+      }
+      const box = new THREE.Box3().setFromObject(o);
+      if (box.isEmpty()) return;
+      if (!(box.min.y <= A.bodyHi && box.max.y >= A.bodyLo)) return;    // 身体带
+      // 只自动补"**从脚底长上来**"的实体：包围盒要完整跨越底座带 [0.6,1.0]。
+      // 悬在半空的（比如 y=[1.0,2.0] 的横杆）不补 —— 它的底座足迹远小于包围盒，
+      // 补出来的盒子必然"半径失配"，而且多半是装饰。
+      if (!(box.min.y <= A.baseLo && box.max.y >= A.baseHi)) return;
+      const sx = box.max.x - box.min.x, sz = box.max.z - box.min.z;
+      const footR = Math.max(sx, sz) / 2;
+      if (Math.max(sx, sz) > A.maxFootR * 2) return;
+      // 会被判成"幽灵墙"的那种实体：太矮（h<0.6）或场景级（footR>40）的一律不做依据
+      if ((box.max.y - box.min.y) < 0.6 || footR > A.maxFootR) return;
+      const ccx = (box.min.x + box.max.x) / 2, ccz = (box.min.z + box.max.z) / 2;
+      auditPts.push({ x: ccx, z: ccz });
+      const cx = ccx, cz = ccz;
+      if (Math.abs(cx) > A.maxX || cz < A.zMin || cz > A.zMax) return;
+      // 同一个小道具的多个 mesh 合成一个碰撞体，避免叠一堆。
+      // 但**合并盒必须再过一次 maxFootR**：有些父 Group 横跨半个场景（一整片花田、
+      // 一整层纸带），合并出来会是一堵 200m 的墙 —— 我第一版就栽在这里：
+      // 迭代收敛测试里 2000 个点有 212 个被这堵墙挤进别的碰撞体。
+      const parent = (o.parent && o.parent.type === 'Group') ? o.parent : o;
+      let e = boxes.get(parent);
+      if (!e) { e = { m: { x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z }, items: [] }; boxes.set(parent, e); }
+      else {
+        if (box.min.x < e.m.x0) e.m.x0 = box.min.x;
+        if (box.max.x > e.m.x1) e.m.x1 = box.max.x;
+        if (box.min.z < e.m.z0) e.m.z0 = box.min.z;
+        if (box.max.z > e.m.z1) e.m.z1 = box.max.z;
+      }
+      e.items.push({ x0: box.min.x, x1: box.max.x, z0: box.min.z, z1: box.max.z,
+                     cx: (box.min.x + box.max.x) / 2, cz: (box.min.z + box.max.z) / 2 });
+    });
+  } finally {
+    // 扫描期间没有改动可见性，这里只是保持 try/finally 结构以备将来需要还原
+    if (visBackup.length) { /* 无副作用 */ }
+  }
+  let added = 0;
+  // 先把上一轮"自动补的、现在已经没有实体支撑"的碰撞体剪掉。
+  // 为什么需要：这个函数在标题页、进入游戏、每次换章都会被调用，而这几个时刻
+  // 场景的**可见性不同** —— 按标题页可见性补出来的碰撞体，到 play 阶段可能就是幽灵墙。
+  // 只剪自己加的（c.__auto），不动手工写的那 121 个。
+  for (let i = colliders.length - 1; i >= 0; i--) {
+    const c = colliders[i];
+    if (!c.__auto) continue;
+    let ok = false;
+    const lim = Math.max(2, c.type === 'circle' ? c.r : c.hw);
+    for (let k = 0; k < auditPts.length; k++) {
+      const p = auditPts[k];
+      const ddx = p.x - c.x, ddz = p.z - c.z;
+      if (ddx * ddx + ddz * ddz < lim * lim) { ok = true; break; }
+    }
+    if (!ok) colliders.splice(i, 1);
+  }
+  // 候选盒被已有碰撞体占了多少？（5x5 采样，够用且便宜）
+  const coveredRatio = (x0, x1, z0, z1) => {
+    const NS = 5;
+    let hit = 0, tot = 0;
+    for (let a = 0; a < NS; a++) {
+      for (let b2 = 0; b2 < NS; b2++) {
+        const px = x0 + (x1 - x0) * (a + 0.5) / NS;
+        const pz = z0 + (z1 - z0) * (b2 + 0.5) / NS;
+        tot++;
+        for (let i = 0; i < colliders.length; i++) {
+          const c = colliders[i];
+          const chw = c.type === 'circle' ? c.r : c.hw;
+          const chd = c.type === 'circle' ? c.r : c.hd;
+          const crot = c.type === 'circle' ? 0 : (c.rot || 0);
+          const dx = px - c.x, dz = pz - c.z;
+          const lx = dx * Math.cos(-crot) - dz * Math.sin(-crot);
+          const lz = dx * Math.sin(-crot) + dz * Math.cos(-crot);
+          const isC = c.type === 'circle';
+          if (isC ? (lx * lx + lz * lz <= chw * chw)
+                  : (Math.abs(lx) <= chw && Math.abs(lz) <= chd)) { hit++; break; }
+        }
+      }
+    }
+    return hit / tot;
+  };
+  const emit = (x0, x1, z0, z1, items) => {
+    const hw = (x1 - x0) / 2, hd = (z1 - z0) / 2;
+    const f = Math.max(hw, hd);
+    if (f < A.minFootR || f > A.maxFootR) return;
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    // 中心附近必须真的有实体，否则这个盒子自己就是幽灵墙。
+    // 判据和幽灵墙判据**逐字对齐**：对方盒用的是 hw（不是 max(hw,hd)），
+    // 半径取 max(2, hw)。这里必须一致，否则我这边"通过"、判据那边照样报幽灵。
+    let near = false;
+    const lim = Math.max(2, hw);
+    for (let i = 0; i < auditPts.length; i++) {
+      const p = auditPts[i];
+      const ddx = p.x - cx, ddz = p.z - cz;
+      if (ddx * ddx + ddz * ddz < lim * lim) { near = true; break; }
+    }
+    if (!near) return;
+    // 大部分已经被现有碰撞体罩住 → 不重复叠加。
+    // 这条是**收敛性的关键**：叠加出来的重叠碰撞体会让 resolveCollisions
+    // 在"推出 A 落进 B / 推出 B 落回 A"之间振荡（实测不加这条：卡住点 3 → 54）。
+    if (coveredRatio(x0, x1, z0, z1) > A.maxCovered) return;
+    const nc = { type: 'box', x: cx, z: cz, hw: hw, hd: hd, rot: 0 };
+    nc.__auto = true;
+    colliders.push(nc);
+    added++;
+  };
+  boxes.forEach((e) => {
+    const mhw = (e.m.x1 - e.m.x0) / 2, mhd = (e.m.z1 - e.m.z0) / 2;
+    if (Math.max(mhw, mhd) <= A.maxFootR) {
+      emit(e.m.x0, e.m.x1, e.m.z0, e.m.z1, e.items);
+    } else {
+      // 合并盒超标 → 退回逐个 mesh（每个在收集阶段已经按 maxFootR 限过）
+      for (let i = 0; i < e.items.length; i++) {
+        const b = e.items[i];
+        emit(b.x0, b.x1, b.z0, b.z1, [b]);
+      }
+    }
+  });
+  if (verbose && added) console.log('[collision] 自动补齐碰撞体 ' + added + ' 个');
+  return added;
+}
+// <<< FIX_COLLISION (task-13) <<<
 
 const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -63184,7 +63417,11 @@ function buildTown() {
     house.position.set(x, 0, z);
     house.rotation.y = ry;
     g.add(house);
-    addCircleCollider(x, z, 4.6);
+    // task-13：这一行原来是 addCircleCollider(x, z, 4.6) —— 用的是**镇局部坐标**，
+    // 而本函数末尾 `g.position.copy(T)` 把整座镇搬到了 WORLD.town=(0,0,-108)，
+    // 于是碰撞体落在 108m 外的序章大路上（幽灵墙），真房子反而没有碰撞（穿模）。
+    // 同时把半径 4.6 的圆换成贴合 8.4x6.7 房子足迹的方盒（圆会让深边外扩 1.3m）。
+    addBoxCollider(T.x + x, T.z + z, w / 2, d / 2, ry);
   });
 
   // 街灯：暖黄的小灯罩
@@ -63948,7 +64185,11 @@ function addTree(x, z, s = 1, tint = 0x1a4030) {
   }
   g.position.set(x, 0, z);
   scene.add(g);
-  addCircleCollider(x, z, 0.7 * s);
+  // task-13：树干是 CylinderGeometry(0.16s, 0.36s, 2.3s)，底部半径 0.36s，
+  // 原来给 0.7s —— 接近树干的两倍，玩家绕树时被推开的距离远大于看到的树干
+  // （实测 40 棵树的碰撞体/树干 = 1.94）。改成 0.45s：略大于树干底半径，
+  // 既贴住树干、又不会变成一圈看不见的墙。
+  addCircleCollider(x, z, 0.45 * s);
   addTreeBase(x, z, s);
 }
 const _crystalMatCache = {};
@@ -64050,8 +64291,11 @@ for (let i = 0; i < 12; i++) {
   bridge.position.set(-20, 0, -55);
   bridge.rotation.y = 0.35;
   scene.add(bridge);
-  addCircleCollider(-20 + 4.4 * Math.cos(0.35), -55 + 4.4 * Math.sin(0.35), 0.5);
-  addCircleCollider(-20 - 4.4 * Math.cos(0.35), -55 - 4.4 * Math.sin(0.35), 0.5);
+  // task-13：删掉两个 r=0.5 的幽灵碰撞体。它们对准的是桥护栏
+  // (本地 ±4.4, y=2.9)，而玩家恒在 y=0 —— 本该从桥下穿过，
+  // 实测足迹内身体带 (0.3~1.7m) 没有任何几何。
+  // addCircleCollider(-20 + 4.4 * Math.cos(0.35), -55 + 4.4 * Math.sin(0.35), 0.5);
+  // addCircleCollider(-20 - 4.4 * Math.cos(0.35), -55 - 4.4 * Math.sin(0.35), 0.5);
 }
 
 // crystals along path + garden
@@ -66515,6 +66759,9 @@ function setQuest(id) {
             : (q.chapter === 2 ? '符号城邦' : (q.chapter === 1 ? '感知花园' : '算理荒原'))))));
   updateGoalMarker();
   showToast(q.title, q.tip);
+  // task-13：换章可能让新的区域变成可见 —— 对「这一章看得见、但还没补过」的实体
+  // 再补一次碰撞体（已补过的会被去重跳过，重复调用是幂等的）
+  if (typeof autoColliderPass === 'function') autoColliderPass(false);
   // 第四章：登上摩天楼才显示层数/信号面板
   if (typeof towerHudUpdate === 'function') towerHudUpdate();
   // 章末面板的文案/按钮也跟着进度走（以前是写死的）
@@ -69050,10 +69297,18 @@ $('btnName').addEventListener('click', () => {
   setExistence(0.48);
   updatePlayerUI();
   state.mode = 'walk';
+  // 「系统编号」是 5 个预设里唯一"服从"的选项：玩家自愿接受编号。
+  // 它不该被套上"不是编号"的模板（那会自相矛盾），而应当被**接住** ——
+  // 主题是「被命名是服从，自我命名是存在的第一笔」，这里正好是两者的交界。
+  const isSerial = /^[A-Za-z]-?\d{3,}$/.test(String(v).trim());
   showDialogue([
     // 「不是编号。是：第一次。」只能在玩家确认之后出现（原先抢在弹窗之前，68270）。
-    { name: '编写者', text: `「${v}」。不是编号。是：第一次。` },
-    { name: '编写者', text: '很好。名字不是标签，是你给自己的第一道光。' },
+    isSerial
+      ? { name: '编写者', text: `「${v}」。……你自己选的编号。` }
+      : { name: '编写者', text: `「${v}」。不是编号。是：第一次。` },
+    isSerial
+      ? { name: '编写者', text: '那就不是编号了。是你给它的第一个意思。' }
+      : { name: '编写者', text: '很好。名字不是标签，是你给自己的第一道光。' },
     { name: '编写者', text: '去吧。去把她没说完的那句话听完。' },
     { name: v, text: '我不是在选答案。我是在选——提问的姿势。' },
   ], () => {
@@ -69106,6 +69361,9 @@ document.querySelectorAll('.gate-card').forEach((card) => {
 // ============================================================
 $('btnStart').addEventListener('click', async () => {
   titleEl.classList.add('hide');
+  // task-13：标题页和 play 阶段的可见性不同 —— 这里再跑一次自动补碰撞体，
+  // 顺带把「按标题页可见性补出来、现在没有实体支撑」的那些剪掉（见 autoColliderPass）。
+  if (typeof autoColliderPass === 'function') autoColliderPass(false);
   state.phase = 'intro';
   // type intro
   introEl.classList.add('show');
@@ -69978,7 +70236,9 @@ function buildWordSea() {
   lamp.name = 'seaLamp';
   g.add(lamp);
   scene.add(g);
-  addCircleCollider(SEA_POS.x, SEA_POS.z, 8);
+  // task-13：删掉海心 r=8 的幽灵碰撞体。实测 60m 内只有一块 y=0.2 的水面
+  // （低于玩家身体带 0.3~1.7），最近的实体是 36m 外的词浮标 —— 罩的是空气。
+  // addCircleCollider(SEA_POS.x, SEA_POS.z, 8);
   return g;
 }
 const wordSea = buildWordSea();
@@ -70449,7 +70709,11 @@ function buildGanBar() {
   }
   g.position.copy(BAR_POS);
   scene.add(g);
-  addCircleCollider(BAR_POS.x, BAR_POS.z, 10);
+  // task-13：原来是罩在酒吧正中间的 r=10 大圆（那里只有地板），
+  // 玩家一进酒吧就被一堵看不见的墙挡住。按实测家具改：吧台 + 两个酒桶。
+  addBoxCollider(BAR_POS.x, BAR_POS.z - 12, 11.2, 1.5, 0);   // 吧台 22.4 x 2.8 @ z-202
+  addCircleCollider(BAR_POS.x - 4, BAR_POS.z - 6, 1.5);      // 酒桶 (136,-196) r=1.4
+  addCircleCollider(BAR_POS.x + 4, BAR_POS.z - 6, 1.5);      // 酒桶 (144,-196) r=1.4
   return g;
 }
 const ganBar = buildGanBar();
@@ -70868,7 +71132,12 @@ function buildAttentionTemple() {
   g.add(arenaFloor);
   g.position.copy(TEMPLE_POS);
   scene.add(g);
-  addCircleCollider(TEMPLE_POS.x, TEMPLE_POS.z, 20);
+  // task-13：原来是半径 20 的圆，把整个竞技场内部都堵死（竞技场地面半径 24）。
+  // 实测真正的障碍是半径 18m 上均匀分布的 8 根柱子（r=1.3、高 16）。
+  for (let k = 0; k < 8; k++) {
+    const a = k * Math.PI / 4;
+    addCircleCollider(TEMPLE_POS.x + 18 * Math.cos(a), TEMPLE_POS.z + 18 * Math.sin(a), 1.8);
+  }
   return g;
 }
 const attentionTemple = buildAttentionTemple();
@@ -71515,7 +71784,18 @@ function updateMovement(dt) {
   moveDir.addScaledVector(camRight, ix);
   if (moveDir.lengthSq() > 0) moveDir.normalize();
 
-  const target = moveDir.multiplyScalar(speed);
+  // task-16：世界边界原来只有一句硬 clamp —— 玩家停在 (120.00, 9.6)，
+  // 前方 10m raycast 什么都没有（qa-playtest 实测），这就是"隐形墙"。
+  // 保留 clamp（不能让玩家走出世界），但补上**渐进制动**：距边界 soft 米内线性减速，
+  // 玩家先感到阻力、再被挡住，而不是"duang 一下撞到空气"。
+  const BOUND = { B: 120, zMin: -420, soft: 12, hintAt: 0 };
+  const boundEdge = Math.min(
+    BOUND.B - Math.abs(player.position.x),
+    BOUND.B - player.position.z,
+    player.position.z - BOUND.zMin
+  );
+  const boundScale = boundEdge >= BOUND.soft ? 1 : Math.max(0.10, boundEdge / BOUND.soft);
+  const target = moveDir.multiplyScalar(speed * boundScale);
   vel.x = lerp(vel.x, target.x, 1 - Math.pow(0.001, dt));
   vel.z = lerp(vel.z, target.z, 1 - Math.pow(0.001, dt));
 
@@ -71530,6 +71810,21 @@ function updateMovement(dt) {
   const B = 120;
   player.position.x = clamp(player.position.x, -B, B);
   player.position.z = clamp(player.position.z, -420, B); // z from -420 to +120
+  // task-16：被挡住时必须"看得见为什么" —— 进入边界软区就提示一次（7 秒节流）。
+  // 判据要的是"玩家能看出为什么走不过去"，硬 clamp + 一句提示 = 满足；
+  // 直接把 clamp 删掉会让玩家跑出世界，那是禁止的。
+  {
+    const eX = B - Math.abs(player.position.x);
+    const eZp = B - player.position.z;
+    const eZn = player.position.z - BOUND.zMin;
+    const edgeNow = Math.min(eX, eZp, eZn);
+    if (edgeNow < BOUND.soft && performance.now() - BOUND.hintAt > 7000) {
+      BOUND.hintAt = performance.now();
+      const side = (eX <= eZp && eX <= eZn) ? (player.position.x > 0 ? '东' : '西')
+        : (eZp <= eZn ? '北' : '南');
+      showToast('荒原尽头', '再往' + side + '，就是没有写下的地方了。', 2600);
+    }
+  }
 
   // face movement
   if (vel.lengthSq() > 0.2) {
@@ -71770,6 +72065,8 @@ window.addEventListener('resize', () => {
 });
 
 // start
+// task-13：在世界全部构建完之后补一次缺失碰撞体（见上面的 autoColliderPass）
+autoColliderPass(true);
 animate();
 updatePlayerUI();
 updateGoalMarker();
@@ -71924,6 +72221,8 @@ window.__SHIJIE_CH0__ = {
   // 游戏不用 three 的 GLTFLoader，而是自带的 parseGLB + glbToGroup
   //（能直接解析 GLB 并处理内嵌贴图）。调试与回归脚本复用同一条路径。
   glbToGroup, parseGLB, loadExternalGLB,
+  colliders, resolveCollisions, addCircleCollider, addBoxCollider,
+  AUTO_COLLIDER, autoColliderPass,
   ruleHitException, ruleRestorePlan, computeRulePlan,
   QUEST_TARGETS,
   updateGoalMarker,
