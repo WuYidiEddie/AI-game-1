@@ -61378,22 +61378,29 @@ $('game').appendChild(renderer.domElement);
 // 而 compMat 是原始 ShaderMaterial、不会自动注入 sRGB 输出编码。
 // 所以 ACES 色调映射与线性->sRGB 编码必须在 compMat 片元里自己做（见下方 acesTone/toSRGB）。
 // exposure 是"进 ACES 之前的线性增益"，配合 ACES 滚降，取值 0.15~0.30 才是夜景该有的浓度。
+// __REALISM_PASS_V1__ 真实感 pass 调过的值（理由见 tools/patch/realism_pass.py 头部实测表）
+// 泛光：0.46/0.55 -> 0.30/0.70。亮部截断实测 0%，不存在过曝；真正让画面"飘"的是
+// 阈值太低导致连中间调都在发光，糊成一片光晕。
+// 饱和：1.28 -> 1.14。原来是糖果色，是"玩具感"的直接来源。
+// 暗角/暖偏：0.26/0.045 -> 0.15/0.02。这两个叠起来像加了一层滤镜，与"干净"相反。
+// 对比/曝光：1.10/0.32 -> 1.24/0.36。动态范围实测只有 59.5，层次挤在下三分之一。
 const POST = {
   enabled: true,
-  bloomStrength: 0.46,
-  bloomThreshold: 0.55,
-  bloomRadius: 0.72,
-  exposure: 0.32,
-  contrast: 1.10,
-  saturation: 1.28,
-  warmth: 0.045,
-  vignette: 0.26,
+  bloomStrength: 0.30,
+  bloomThreshold: 0.70,
+  bloomRadius: 0.62,
+  exposure: 0.42,
+  contrast: 1.24,
+  saturation: 1.14,
+  warmth: 0.02,
+  vignette: 0.15,
   chroma: 0.0016,
   // 描边：0 = 关。2 个 pass（法线 + 边缘），关掉时完全不执行
   outline: 0.85,
   outlineDepthScale: 1.0,
   // 环境光遮蔽（SSAO）：0 = 关。复用描边的法线/深度缓冲，半径 0.5m（实测）
-  ao: 1.0,
+  // __REALISM_PASS_V1__ 1.0 -> 1.3：阴角更暗，东西才像"落在地上"而不是浮着
+  ao: 1.3,
   // toon 化（PBR 材质按 NdotL 量化）
   toon: true,
 };
@@ -62043,7 +62050,10 @@ let skyDome = null;
 // 极远天穹里的星空（背景层，避免远处只剩纯色）
 scene.background = new THREE.Color(0x141f38);
 // 雾色：偏冷夜蓝，避免大范围泛出粉紫把地形糊掉
-scene.fog = new THREE.FogExp2(0x24365c, 0.0052);
+// __REALISM_PASS_V1__ 雾色 0x24365c -> 0x1c2a44、密度 0.0052 -> 0.0032。
+// 雾色原来比场景中位亮度还亮（milky），远景一律被洗成同一种蓝灰 —— 这就是"过灰"。
+// 把雾色压暗 + 密度降低：远处变暗而不是变白，层次与纵深就回来了，夜色氛围仍在。
+scene.fog = new THREE.FogExp2(0x1c2a44, 0.0032);
 
 // 用天穹烘一张环境贴图：让 metalness>0 的材质有环境反射（否则金属会结构性发黑）
 // 也顺便给所有 PBR 材质一点环境光，画面立刻"有空气感"
@@ -62075,13 +62085,21 @@ scene.add(ambient);
 const sun = new THREE.DirectionalLight(0xffe0b0, 2.15);
 sun.position.set(36, 55, 18);
 sun.castShadow = true;
+// __REALISM_PASS_V1__ 阴影精度：±90m -> ±55m。
+// 1024² 铺 ±90m = 180m/1024 = **17.6cm 每 texel**，近景阴影糊成一团、道具像浮在地上。
+// 收紧到 ±55m 后 = 110m/1024 = **10.7cm 每 texel**（1.64 倍精度），
+// 而且**完全不增加开销**（阴影 pass 的填充量只跟 mapSize 有关，跟正交范围无关）。
+// 这里刻意**没有**把 mapSize 提到 2048：那会让阴影 pass 填充量变成 4 倍，
+// 而本机 headful bench 的运行间波动高达 40%（基线自身 14.7~20.9fps），
+// 无法可靠区分 2048² 的收益与代价 —— 在"性能不得倒退 10%"的硬约束下不做没把握的事。
+// 收紧范围本来会丢掉远处阴影，所以下面把阴影相机挂到玩家身上（方向不变，只平移）。
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 180;
-sun.shadow.camera.left = -90;
-sun.shadow.camera.right = 90;
-sun.shadow.camera.top = 90;
-sun.shadow.camera.bottom = -90;
+sun.shadow.camera.left = -55;
+sun.shadow.camera.right = 55;
+sun.shadow.camera.top = 55;
+sun.shadow.camera.bottom = -55;
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0x5a9fd4, 0.42);
@@ -62569,6 +62587,129 @@ function toonSweep(force) {
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     mats.forEach(toonizeMaterial);
   });
+}
+
+// ============================================================
+// __REALISM_PASS_V1__ 真实感 pass（task-21）
+// ============================================================
+// 实测（artifacts/realism/diag-base.json）：895 个 MeshStandardMaterial 里
+// 只有 9 个有 map、**1 个有 normalMap**、0 个有 aoMap —— 整个场景的表面都是
+// "纯色 + 程序化 canvas 底纹"，没有任何微观起伏。这是"虚幻/玩具感"的主要来源。
+//
+// 做法：把 models/tex/ 里现成的无缝贴图（asset-texture 产出，512px，OpenGL green-up）
+// 接到"大块表面"上，只接两张：
+//   · normalMap    —— 微观起伏，直接消掉塑料感（最关键的一张）
+//   · roughnessMap —— 高光斑驳，让表面随视角有变化
+// 不接 aoMap：three 的 aoMap 需要第二套 UV（uv1），本项目几何体没有 uv1，
+// 硬接只会让整个表面被乘成黑。也不接 map（albedo）：那会覆盖掉美术定的配色。
+const REALISM = {
+  on: true,
+  // "大块表面"阈值。实测网格世界半径分布（artifacts/realism/diag-why-few.cjs）：
+  //   p10 0.12 / p50 1.07 / p75 2.73 / p90 7.43 / max 420 —— 2865 个网格里 2209 个 < 3m。
+  // 一开始取 3.0 只覆盖到 15 个材质（几乎等于没改），降到 0.8 才覆盖到满地的箱子/木板/柱子。
+  minRadius: 0.8,
+  normalScale: 0.85,      // 法线强度：太大像搓衣板，太小看不出（0.55 实测看不出，提到 0.85）
+  groundRepeat: 160,      // 360m 地面 -> 每格 2.25m，颗粒才读得出来
+  stoneRepeat: 7,         // 中小构件（箱子/木板/柱子）
+  stoneRepeatBig: 18,     // 大墙体/巨型构件
+  goldRepeat: 6,
+  shadowsFollow: true,
+  __tick: 0,
+};
+
+const REALISM_TEX = { ground: null, stone: null, stoneBig: null, gold: null, ready: false };
+
+function loadRealismTextures() {
+  const L = new THREE.TextureLoader();
+  const load = (file, repeat) => {
+    const t = L.load('./models/tex/' + file, undefined, undefined, () => {
+      console.warn('[realism] 贴图加载失败（补丁不生效，但不影响游戏）: ' + file);
+    });
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repeat, repeat);
+    // 法线/粗糙度是**数据图**，绝不能当 sRGB 解码，否则起伏方向和高光全是错的
+    t.colorSpace = THREE.NoColorSpace;
+    t.anisotropy = 4;
+    return t;
+  };
+  REALISM_TEX.ground = { n: load('ground_normal.png', REALISM.groundRepeat), r: load('ground_roughness.png', REALISM.groundRepeat) };
+  REALISM_TEX.stone = { n: load('stone_normal.png', REALISM.stoneRepeat), r: load('stone_roughness.png', REALISM.stoneRepeat) };
+  REALISM_TEX.stoneBig = { n: load('stone_normal.png', REALISM.stoneRepeatBig), r: load('stone_roughness.png', REALISM.stoneRepeatBig) };
+  REALISM_TEX.gold = { n: load('gold_normal.png', REALISM.goldRepeat), r: load('gold_roughness.png', REALISM.goldRepeat) };
+  REALISM_TEX.ready = true;
+}
+loadRealismTextures();
+
+const __realismScale = new THREE.Vector3();
+
+// 给单个材质判定并挂贴图。radius = 用到该材质的**最大**网格半径。
+function realismizeMaterial(m, radius) {
+  if (!m || m.__realismized) return;
+  m.__realismized = true;
+  if (!m.isMeshStandardMaterial && !m.isMeshPhysicalMaterial) return;
+  if (m.transparent || m.depthWrite === false) return;      // 雾面/贴花不碰
+  // 注意：**不能**因为材质已有 map(albedo) 就跳过 —— 地面就是"有 albedo 画布贴图、
+  // 但没有法线图"的最大一块面积，第一次写这个过滤条件时正好把它漏掉了。
+  if (m.normalMap || m.roughnessMap) return;
+  if (m.emissiveIntensity > 0.6) return;                    // 强发光体不碰
+  const warmMetal = m.color.r > m.color.b * 1.2 && m.metalness >= 0.35;
+  if (!warmMetal && m.metalness > 0.75) return;             // 纯金属不碰
+  const sized = radius >= 100 ? REALISM_TEX.ground
+    : radius >= 20 ? REALISM_TEX.stoneBig
+      : REALISM_TEX.stone;
+  const pick = (warmMetal && REALISM_TEX.gold.n) ? REALISM_TEX.gold : sized;
+  if (!pick || !pick.n) { m.__realismized = false; return; } // 贴图还没到位，下一轮再试
+  m.normalMap = pick.n;
+  m.normalScale.set(REALISM.normalScale, REALISM.normalScale);
+  m.roughnessMap = pick.r;
+  // roughnessMap 会乘到 roughness 上，先按贴图均值把基准抬回去，避免整体变哑
+  m.roughness = Math.min(1, m.roughness * 1.18);
+  m.needsUpdate = true;
+}
+
+function realismSweep(force) {
+  if (!REALISM.on || !REALISM_TEX.ready) return;
+  REALISM.__tick++;
+  if (!force && (REALISM.__tick % 90) !== 0) return;   // ~1.5 秒扫一次
+  // 两遍扫：先求"每个材质对应的最大网格半径"，再统一判定。
+  // 单遍扫会变成"谁先被遍历到谁说了算"——同一个材质先落在小箱子上就被判成"太小"，
+  // 结果大墙也拿不到贴图（实测单遍 3.0 阈值只覆盖 15 个材质，两遍 0.8 阈值覆盖几百个）。
+  const maxR = new Map();
+  scene.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh) return;      // 角色是蒙皮网格，跳过
+    const g = o.geometry;
+    if (!g || !g.attributes || !g.attributes.uv) return;   // 没 UV 的几何体贴了也是垃圾
+    if (g.boundingSphere === null) g.computeBoundingSphere();
+    if (!g.boundingSphere) return;
+    o.getWorldScale(__realismScale);
+    const radius = g.boundingSphere.radius
+      * Math.max(Math.abs(__realismScale.x), Math.abs(__realismScale.y), Math.abs(__realismScale.z));
+    if (radius < REALISM.minRadius) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m || m.__realismized) continue;
+      const prev = maxR.get(m);
+      if (prev === undefined || radius > prev) maxR.set(m, radius);
+    }
+  });
+  maxR.forEach((radius, m) => realismizeMaterial(m, radius));
+}
+
+// 阴影相机跟随：只平移、不转向，所以光照方向与明暗关系完全不变。
+// 量化到 2m 再更新，避免阴影贴图逐帧抖动。
+const __sunOffset = sun.position.clone();
+scene.add(sun.target);
+sun.shadow.camera.updateProjectionMatrix();
+let __lastShadowX = Infinity, __lastShadowZ = Infinity;
+function realismShadowFollow() {
+  if (!REALISM.shadowsFollow) return;
+  const px = Math.round(player.position.x / 2) * 2;
+  const pz = Math.round(player.position.z / 2) * 2;
+  if (px === __lastShadowX && pz === __lastShadowZ) return;
+  __lastShadowX = px; __lastShadowZ = pz;
+  sun.target.position.set(px, 0, pz);
+  sun.position.set(px + __sunOffset.x, __sunOffset.y, pz + __sunOffset.z);
+  sun.target.updateMatrixWorld();
 }
 
 function fresnelShell(color, opacity = 0.35, power = 2.2) {
@@ -66924,26 +67065,46 @@ function setQuest(id) {
 // **火堆本来就不该挡人**（玩家该能从火里走过去捡盘），所以这里把覆盖了盘的自动碰撞体删掉。
 // 只删 autoColliderPass 生成的（带 __auto 标记），不碰手工注册的。
 function pruneCollidersOverPlates() {
-  if (typeof weightPlates === 'undefined' || !weightPlates.length) return 0;
-  const PLATE_CLEAR = 1.2;   // 盘心周围这个半径内不允许有自动碰撞体
-  const isAuto = (c) => c.__auto === true;
-  const covers = (c, px, pz) => {
-    if (c.type === 'circle') return Math.hypot(c.x - px, c.z - pz) < c.r + PLATE_CLEAR;
-    // box：转到局部坐标判断
+  // 关键交互点：自动补的碰撞体**不该侵入玩家必须到达的地方**。
+  // 起因：task-19 把巨型盒拆成圆时生成了 3 个重合的 circle(-19.1,-200.3) r=20.4，
+  // 把残差苗床 @(-8,-200)（交互半径 3.5）整片罩住 → 玩家最近只能站到 9.9m 外，
+  // **主线卡死**。当时的验收只看了"巨型盒数"和"C4 穿模"，没有判据检查既有交互点是否仍可达。
+  // 所以这里按**交互半径**清：任何 __auto 碰撞体侵入某交互点的可交互范围就删掉。
+  // 只删 __auto（手工碰撞体如苗床自己的 r=1.2 语义是"别站进苗床里"，必须保留）。
+  const targets = [];
+  try {
+    for (const it of interactables) {
+      if (!it || !it.pos) continue;
+      const pos = typeof it.pos === 'function' ? it.pos() : it.pos;
+      if (!pos || !isFinite(pos.x) || !isFinite(pos.z)) continue;
+      targets.push({ x: pos.x, z: pos.z, r: it.r || 3.0, id: it.id });
+    }
+  } catch (e) { /* interactables 未就绪时安全跳过 */ }
+  if (typeof weightPlates !== 'undefined') {
+    for (const wp of weightPlates) targets.push({ x: wp.pos.x, z: wp.pos.z, r: 3.5, id: 'plate' });
+  }
+  if (!targets.length) return 0;
+
+  // 碰撞体是否侵入某交互点的可交互范围
+  const intrudes = (c, t) => {
+    const lim = t.r + 0.4;   // 允许一点点余量，但别吃掉整个交互半径
+    if (c.type === 'circle') return Math.hypot(c.x - t.x, c.z - t.z) < c.r + lim;
     const cos = Math.cos(-(c.rot || 0)), sin = Math.sin(-(c.rot || 0));
-    const lx = (px - c.x) * cos - (pz - c.z) * sin;
-    const lz = (px - c.x) * sin + (pz - c.z) * cos;
-    return Math.abs(lx) < c.hw + PLATE_CLEAR && Math.abs(lz) < c.hd + PLATE_CLEAR;
+    const lx = (t.x - c.x) * cos - (t.z - c.z) * sin;
+    const lz = (t.x - c.x) * sin + (t.z - c.z) * cos;
+    return Math.abs(lx) < c.hw + lim && Math.abs(lz) < c.hd + lim;
   };
+
   let removed = 0;
   for (let i = colliders.length - 1; i >= 0; i--) {
     const c = colliders[i];
-    if (!isAuto(c)) continue;
-    if (weightPlates.some((wp) => covers(c, wp.pos.x, wp.pos.z))) {
+    if (!c.__auto) continue;                 // 只删自动补的
+    if (targets.some((t) => intrudes(c, t))) {
       colliders.splice(i, 1);
       removed++;
     }
   }
+  if (removed) console.log('[collision] 清掉侵入交互点的自动碰撞体 ' + removed + ' 个');
   return removed;
 }
 try { pruneCollidersOverPlates(); } catch (e) { /* 火场未初始化时安全跳过 */ }
@@ -68279,6 +68440,23 @@ function showNurseryDialogue() {
       setQuest(Q_CITY);
       showToast('通往城邦', '第二章 · 符号城邦');
       showChapterBanner('CHAPTER 02', '符 号 城 邦', '知识可以被写下来吗？');
+      // task-20 追加：第一章章末回顾面板
+      // 史锚点放在**回顾**位置（章末面板），不在游玩中喂知识点；由 注 说，
+      // 因为它就是那个负责翻译黑话的角色（与「它在说：你们太乐观了…」同一逻辑）。
+      // 延迟 2.2s：先让第二章横幅播完（与第四章章末面板同样的 setTimeout 节奏）。
+      setTimeout(() => {
+        state.phase = 'complete';
+        if (typeof showCompletePanel === 'function') showCompletePanel();
+        completeEl.classList.add('show');
+        $('completeName').textContent = state.name;
+        $('completeLines').innerHTML = `
+          <b style="color:var(--gold);letter-spacing:.3em">第一章 · 感知花园 · 完</b><br/><br/>
+          你学会了：一条线能分开什么；也见过一条线分不开什么。<br/><br/>
+          <span style="color:var(--text-dim)">注：（小声）那场火不是意外——是「看好」先过期了。<br/>
+          　　　人类给这件事起的名字，叫<b style="color:var(--gold)">热潮退去</b>。</span><br/><br/>
+          下一站：<span style="color:var(--gold)">符号城邦 · 知识可以被写下来吗？</span>
+        `;
+      }, 2200);
     });
     return;
   }
@@ -72314,6 +72492,8 @@ function animate() {
 
   drawMinimap();
   toonSweep();     // PBR 材质的 toon 化懒注入（每半秒扫一次，一次编译后常驻）
+  realismSweep();  // __REALISM_PASS_V1__ 大块表面接 normal/roughness（每 ~1.5 秒扫一次）
+  realismShadowFollow();  // __REALISM_PASS_V1__ 阴影相机跟随玩家（方向不变，只平移）
   renderPost();
 }
 
