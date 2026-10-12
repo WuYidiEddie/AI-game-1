@@ -60819,7 +60819,153 @@ function autoColliderPass(verbose) {
       }
     }
   });
+// >>> GIANT_BOX_REFINE (task-19) >>>
+// ============================================================
+// 巨型盒精修：只动 max(hw,hd) > maxHalf 的那几个自动盒
+// ============================================================
+// 为什么只动这几个：task-16 的 v2 把整个收集算法换成"逐 mesh 轮廓"，
+// 巨型盒 9→0 但覆盖率 27→71。这里反过来 —— 收集算法不改，
+// 只对极少数超大候补做精修，其余候选逐字不变，**覆盖率不可能劣化**。
+//
+// 量"玩家身高那一层"的轮廓：从外面朝轴心在 y=rayY 打 16 条射线，
+// 返回各方向命中距离 + 轮廓多边形面积 / 包围盒面积（圆 ≈0.785，方形 ≈1.0）。
+// 注意用 var 而不是 const：这个块插在 autoColliderPass 体内，
+// 若调用点写在声明之前会撞 TDZ（"Cannot access before initialization"）——
+// 我第一次就栽在这，页面直接起不来。var 提升后没有 TDZ 问题。
+var GBR_TUNE = {
+  maxHalf: 6,       // 方盒半宽上限（跨度 12m）；超过就精修
+  rayY: 1.0,        // 量轮廓的高度（腰）
+  roundFill: 0.88,  // 轮廓面积/包围盒面积 < 它 → 当圆形
+  minFootR: 1.5,
+  maxR: 24,
+};
+
+function gbrSilhouette(o, cx, cz, r0) {
+  const rc = new THREE.Raycaster();
+  const org = new THREE.Vector3(), dir = new THREE.Vector3();
+  const R = r0 + 2;
+  const ds = [], pts = [];
+  for (let k = 0; k < 16; k++) {
+    const a = (k / 16) * Math.PI * 2;
+    const ux = Math.cos(a), uz = Math.sin(a);
+    org.set(cx + ux * R, GBR_TUNE.rayY, cz + uz * R);
+    dir.set(-ux, 0, -uz);
+    rc.set(org, dir);
+    rc.near = 0.01;
+    rc.far = R * 2 + 4;
+    const hit = rc.intersectObject(o, false);
+    if (!hit.length) continue;
+    const d = R - hit[0].distance;          // 该方向上"轴心 → 表面"的距离
+    if (d <= 0.02) continue;
+    ds.push(d); pts.push({ x: hit[0].point.x, z: hit[0].point.z });
+  }
+  if (ds.length < 8) return null;
+  let mn = Infinity, mx = 0;
+  for (let i = 0; i < ds.length; i++) { if (ds[i] < mn) mn = ds[i]; if (ds[i] > mx) mx = ds[i]; }
+  let area = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], q = pts[(i + 1) % pts.length];
+    area += p.x * q.z - q.x * p.z;
+  }
+  area = Math.abs(area) / 2;
+  let ax0 = Infinity, ax1 = -Infinity, az0 = Infinity, az1 = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (p.x < ax0) ax0 = p.x; if (p.x > ax1) ax1 = p.x;
+    if (p.z < az0) az0 = p.z; if (p.z > az1) az1 = p.z;
+  }
+  const boxArea = Math.max(1e-6, (ax1 - ax0) * (az1 - az0));
+  return { r: (mn + mx) / 2, fillRatio: area / boxArea };
+}
+
+// 返回精修了几个。只碰 __auto 的方盒，其余一个字节不动。
+function refineBigAutoBoxes(verbose) {
+  const A = AUTO_COLLIDER;
+  const T = GBR_TUNE;
+  // 幽灵自检用：audit 口径认账的实体中心（h>=0.6 且 footR<=40）。
+  // **拆瓦片那条分支必须用它**：大盒本来就比实体大，切出来的瓦片有些落在
+  // 没有实体处 —— 那些瓦片自己就是幽灵墙（实测不加这条：C2 从 0 变 16）。
+  const pts = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.geometry) return;
+    const bx = new THREE.Box3().setFromObject(o);
+    if (bx.isEmpty()) return;
+    const sx = bx.max.x - bx.min.x, sz = bx.max.z - bx.min.z, sy = bx.max.y - bx.min.y;
+    if (sy < 0.6 || Math.max(sx, sz) / 2 > 40) return;
+    pts.push({ x: (bx.min.x + bx.max.x) / 2, z: (bx.min.z + bx.max.z) / 2 });
+  });
+  const hasNear = (x, z, lim) => {
+    for (let i = 0; i < pts.length; i++) {
+      const dx = pts[i].x - x, dz = pts[i].z - z;
+      if (dx * dx + dz * dz < lim * lim) return true;
+    }
+    return false;
+  };
+  let n = 0;
+  for (let i = colliders.length - 1; i >= 0; i--) {
+    const c = colliders[i];
+    if (!c.__auto || c.type !== 'box') continue;
+    const hw = c.hw, hd = c.hd;
+    if (Math.max(hw, hd) <= T.maxHalf) continue;      // 小盒不碰
+    // 找这个盒子罩着的、身体带上真的挡路的 mesh，取最大那个量轮廓
+    let best = null, bestR = 0;
+    scene.traverse((o) => {
+      if (!o.isMesh || !o.geometry) return;
+      if (A.excludeGeom.indexOf(o.geometry.type) >= 0) return;
+      const box = new THREE.Box3().setFromObject(o);
+      if (box.isEmpty()) return;
+      if (!(box.min.y <= A.bodyHi && box.max.y >= A.bodyLo)) return;
+      const bx = (box.min.x + box.max.x) / 2, bz = (box.min.z + box.max.z) / 2;
+      if (Math.abs(bx - c.x) > hw || Math.abs(bz - c.z) > hd) return;
+      const r2 = Math.max(box.max.x - box.min.x, box.max.z - box.min.z) / 2;
+      if (r2 > bestR) { bestR = r2; best = o; }
+    });
+    if (!best) continue;
+    const bb = new THREE.Box3().setFromObject(best);
+    const cx2 = (bb.min.x + bb.max.x) / 2, cz2 = (bb.min.z + bb.max.z) / 2;
+    const sil = gbrSilhouette(best, cx2, cz2, bestR);
+    if (sil && sil.fillRatio < T.roundFill && sil.r >= T.minFootR && sil.r <= T.maxR) {
+      // 圆形实体 → 换圆：中心不变，半径换成"身高那一层"的轮廓半径
+      colliders.splice(i, 1);
+      const nc = { type: 'circle', x: cx2, z: cz2, r: sil.r };
+      nc.__auto = true;
+      colliders.push(nc);
+      if (verbose) console.log('[collision] 巨型盒精修→圆 #' + i + ' (' + c.x.toFixed(1) + ',' + c.z.toFixed(1)
+        + ') hw=' + hw.toFixed(1) + ' → 圆 r=' + sil.r.toFixed(2) + '（fill=' + sil.fillRatio.toFixed(2) + '）');
+      n++;
+    } else {
+      // 非圆形 → 拆瓦片，不再保留整块大盒
+      colliders.splice(i, 1);
+      const nx = Math.max(1, Math.ceil((2 * hw) / (2 * T.maxHalf)));
+      const nz = Math.max(1, Math.ceil((2 * hd) / (2 * T.maxHalf)));
+      let added = 0;
+      for (let ix = 0; ix < nx; ix++) {
+        for (let iz = 0; iz < nz; iz++) {
+          const tx0 = c.x - hw + (2 * hw) * ix / nx, tx1 = c.x - hw + (2 * hw) * (ix + 1) / nx;
+          const tz0 = c.z - hd + (2 * hd) * iz / nz, tz1 = c.z - hd + (2 * hd) * (iz + 1) / nz;
+          const thw = (tx1 - tx0) / 2, thd = (tz1 - tz0) / 2;
+          if (Math.max(thw, thd) < T.minFootR) continue;
+          const tcx = (tx0 + tx1) / 2, tcz = (tz0 + tz1) / 2;
+          // 幽灵自检：瓦片中心附近必须有实体，否则这块瓦片就是新造的隐形墙
+          if (!hasNear(tcx, tcz, Math.max(2, thw))) continue;
+          const nc2 = { type: 'box', x: tcx, z: tcz, hw: thw, hd: thd, rot: 0 };
+          nc2.__auto = true;
+          colliders.push(nc2);
+          added++;
+        }
+      }
+      if (verbose) console.log('[collision] 巨型盒精修→拆瓦片 #' + i + ' (' + c.x.toFixed(1) + ',' + c.z.toFixed(1)
+        + ') hw=' + hw.toFixed(1) + ' → ' + added + ' 个小盒');
+      n++;
+    }
+  }
+  if (verbose && n) console.log('[collision] 巨型盒精修了 ' + n + ' 个');
+  return n;
+}
+// <<< GIANT_BOX_REFINE (task-19) <<<
+
   if (verbose && added) console.log('[collision] 自动补齐碰撞体 ' + added + ' 个');
+  refineBigAutoBoxes(verbose);      // task-19：把超大自动盒精修成圆/瓦片（只动那几个）
   return added;
 }
 // <<< FIX_COLLISION (task-13) <<<
@@ -63043,6 +63189,14 @@ wellGroup.add(wellLight);
     col.position.set(WORLD.well.x + Math.cos(a) * 11, (10 + i * 2) / 2, WORLD.well.z + Math.sin(a) * 11);
     col.castShadow = true;
     scene.add(col);
+    // 这几根是**实心金属柱**（不透明 + metalness 0.55 + castShadow），该挡人。
+    // 之前能走进去有两个独立原因：
+    //   ① 井的碰撞体半径只有 8.2，而这些柱子站在半径 11 的圈上（差 2.8m）
+    //   ② autoColliderPass 的 minFootR 是 1.5，柱底半径 1.1 被当成"小摆件"排除了
+    // 注意**不要**改用"把井的碰撞体放大到 ≥12"——井的交互半径是 11，
+    // 放大会让玩家进不到交互范围，序章第 5 步「靠近排热井」按 E 会软锁。
+    // 在主循环里各加一个小圆：只在 3 个方位挡路，柱间空档仍可接近到 8.75m（< 11）。
+    addCircleCollider(col.position.x, col.position.z, 1.1);
   }
 }
 wellGroup.position.copy(WORLD.well);
