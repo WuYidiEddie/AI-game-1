@@ -69863,6 +69863,11 @@ const gardenInteract = [
     onInteract: () => {
       state.flags.heardRuthEnd = true;
       showDialogue([
+        // task-20：先把赌注摆出来 —— 没有「展示日/经费」，后面的「资产回收」就是凭空出现的灾难
+        // （文档 chapter1:296-305 原文）
+        { name: '露丝', text: '明天是展示日。只要他们看见花会自己分开，他们就会相信：学习是可能的。' },
+        { name: '露丝', text: '然后我们就有经费，有耐心，有下一个夏天。' },
+        { name: '注', text: '（小声）我不喜欢「只要……就会」这个句式。宇宙特别爱打这种脸。' },
         { name: '露丝', text: '再往后的故事，会很烫。会有玻璃碎掉的声音。' },
         { name: '露丝', text: '但现在——先记住夏天。记住一条线就够的那些下午。' },
         { name: '露丝', text: '再记住一句比画线更重要的话：' },
@@ -69873,12 +69878,18 @@ const gardenInteract = [
       ], () => {
         // Chapter 1 climax: fire
         fireGroup.visible = true;
-        weightPlates.forEach((w) => { w.mesh.visible = true; });
+        // task-20：桌上的三枚被火吞进去 —— 位置挪到火场，玩家抢的是自己刚看过的东西
+        weightPlates.forEach((w) => {
+          w.mesh.visible = true;
+          w.mesh.position.copy(w.pos);
+          w.mesh.position.y = 1.2;
+        });
         state.flags.fireStarted = true;
         state.flags.plates = 0;
         setQuest(Q_FIRE);
         showDialogue([
           { name: '系统女声', text: '警告：研究资产回收。乐观指数过高，判定为噪声。' },
+          { name: '注', text: '（它在说：你们太乐观了，所以这些都不算成果。）' },
           { name: '露丝', text: '不！你们可以删掉经费——但不能删掉它们还没开的花！' },
           { name: '注', text: '火！温室在烧！快抢【权重盘】——它们在红光里发光！' },
         ], () => {
@@ -69906,7 +69917,12 @@ weightPlates.forEach((wp, idx) => {
         fireGroup.visible = false;
         showDialogue([
           { name: '露丝', text: '很好。你把「学」的可能，从火里带出来了。' },
+          // task-20：文档 chapter1:346-348 的原句 —— 这一章「意义」的落点
+          { name: '露丝', text: '初。听好了。失败是分类结果的一种。不是灵魂的判决书。' },
+          { name: state.name, text: '……我记住了。' },
           { name: state.name, text: '……这里好烫。你呢？' },
+          // 把「火后苗床」挂上因果：抢出来的东西要埋下去，才不是白烧
+          { name: '注', text: '温室烧了，可土还是热的。把抢出来的东西埋下去——明年它们还能再开一次。' },
           { name: '露丝', text: '我去当冬天的火种。你去种下一棵会开很多层的树。' },
         ], () => {
           setQuest(Q_NURSERY);
@@ -69918,6 +69934,64 @@ weightPlates.forEach((wp, idx) => {
     },
   });
 });
+
+// ---- 展示日前夜的长桌（task-20）----
+// 文档 chapter1:284-295：温室灯全亮，露丝把学生们的笔记、穿孔卡、调好的权重全摆在长桌上，
+// 「玩家可自由检查桌上物品——每一本笔记都是一段人类短故事」。
+// 这里不走旁白：玩家自己走过去看；看到什么，才知道这场火在烧什么。
+{
+  const TABLE_POS = new THREE.Vector3(26, 0, -186);
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 0.75, metalness: 0.1, emissive: 0x1a1008, emissiveIntensity: 0.35 });
+  const table = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.16, 1.7), woodMat);
+  table.position.set(TABLE_POS.x, 1.0, TABLE_POS.z);
+  table.castShadow = true; table.receiveShadow = true;
+  scene.add(table);
+  [[-1.45, -0.62], [1.45, -0.62], [-1.45, 0.62], [1.45, 0.62]].forEach(([dx, dz]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.0, 0.14), woodMat);
+    leg.position.set(TABLE_POS.x + dx, 0.5, TABLE_POS.z + dz);
+    leg.castShadow = true;
+    scene.add(leg);
+  });
+  const paperMat = new THREE.MeshStandardMaterial({ color: 0xe8e0cc, roughness: 0.9, metalness: 0.0, emissive: 0x2a2418, emissiveIntensity: 0.45 });
+  [[-1.15, -0.28, 0.12], [-0.3, 0.16, -0.18], [0.55, -0.22, 0.26]].forEach(([dx, dz, rot]) => {
+    const card = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.02, 0.32), paperMat);
+    card.position.set(TABLE_POS.x + dx, 1.09, TABLE_POS.z + dz);
+    card.rotation.y = rot;
+    scene.add(card);
+  });
+  // 三枚权重盘先摆在桌上；火起时 E2 会把它们挪进火场（玩家因此认得自己抢的是什么）
+  weightPlates.forEach((w, i) => {
+    w.mesh.position.set(TABLE_POS.x + 1.05, 1.12, TABLE_POS.z - 0.35 + i * 0.35);
+    w.mesh.visible = true;
+  });
+  const tableTalk = (id, label, lines) => {
+    interactables.push({
+      id,
+      pos: new THREE.Vector3(TABLE_POS.x, 0, TABLE_POS.z),
+      r: 3,
+      label,
+      // 只在「盛夏的前夜」可用：火一烧起来，桌子就不再是能慢慢读东西的地方
+      active: () => state.quest === Q_GREENHOUSE && !state.flags.fireStarted,
+      onInteract: () => showDialogue(lines),
+    });
+  };
+  tableTalk('note_letter', '读一读《给女儿的信》', [
+    { name: '纸条 · 给女儿的信', text: '「如果机器学会了认字，爸爸是不是就能多陪你？」' },
+    { name: state.name, text: '（一封没写完的信。收信人还很小。）' },
+  ]);
+  tableTalk('note_reject', '读一读《拒绝报告》', [
+    { name: '公文 · 拒绝报告', text: '「娱乐大于科学。建议终止。」' },
+    { name: '注', text: '（盖章的公文不写理由——因为不需要理由。）' },
+  ]);
+  tableTalk('note_selfeval', '读一读《露丝自评》', [
+    { name: '手稿 · 露丝自评', text: '「他们说我在造玩具。可玩具怎么会想问为什么？」' },
+    { name: '注', text: '（字迹比那两份潦草。她写这句的时候大概很晚了。）' },
+  ]);
+  tableTalk('table_weights', '看清楚那三枚圆盘', [
+    { name: '注', text: '权重盘。花往哪边倒、认谁是自己人，都由这几个数说了算。' },
+    { name: state.name, text: '（原来「学」到最后，会落到三个数上。）' },
+  ]);
+}
 
 // nursery
 interactables.push({
